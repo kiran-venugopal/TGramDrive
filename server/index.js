@@ -19,7 +19,7 @@ app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // The "catchall" handler: for any request that doesn't
 // match one above, send back React's index.html file.
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
     // Check if request is for API
     if (req.path.startsWith('/api/')) {
         return res.status(404).json({ message: 'API endpoint not found' });
