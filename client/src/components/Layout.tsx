@@ -106,30 +106,30 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
     }, [searchQuery]); // fetchDrives excluded to avoid loop
 
     return (
-        <div className="flex h-screen bg-gray-50 overflow-hidden">
+        <div className="flex h-screen bg-brand-bg overflow-hidden text-brand-text">
             {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
-                <div className="flex items-center justify-between p-4 border-b border-gray-100 flex-shrink-0">
+            <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-brand-bg border-r border-brand-text/10 transform transition-transform duration-200 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
+                <div className="flex items-center justify-between p-4 border-b border-brand-text/10 flex-shrink-0">
                     <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
+                        <div className="w-8 h-8 bg-brand-primary rounded-lg flex items-center justify-center text-white font-bold">
                             TG
                         </div>
-                        <span className="text-xl font-bold text-gray-800">TG Drive</span>
+                        <span className="text-xl font-bold text-brand-text">TGramDrive</span>
                     </div>
                     <button onClick={() => setMobileMenuOpen(false)} className="md:hidden">
-                        <Menu className="w-6 h-6 text-gray-500" />
+                        <Menu className="w-6 h-6 text-brand-text/70" />
                     </button>
                 </div>
 
                 {/* Search Bar */}
-                <div className="p-3 border-b border-gray-50 flex-shrink-0">
+                <div className="p-3 border-b border-brand-text/5 flex-shrink-0">
                     <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-4 w-4 text-gray-400" />
+                            <Search className="h-4 w-4 text-brand-text/50" />
                         </div>
                         <input
                             type="text"
-                            className="block w-full pl-9 pr-3 py-1.5 border border-gray-200 rounded-md leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-xs"
+                            className="block w-full pl-9 pr-3 py-1.5 border border-brand-text/10 rounded-md leading-5 bg-black/20 text-brand-text placeholder-brand-text/30 focus:outline-none focus:bg-black/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-xs"
                             placeholder="Search channels..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -138,7 +138,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                 </div>
 
                 <div className="p-2 space-y-1 overflow-y-auto flex-1 custom-scrollbar">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-2 mt-2">Drives</h3>
+                    <h3 className="text-xs font-semibold text-brand-text/50 uppercase tracking-wider mb-2 px-2 mt-2">Drives</h3>
 
                     {drives.map((drive) => (
                         <button
@@ -147,7 +147,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                                 onDriveSelect(drive.id);
                                 setMobileMenuOpen(false);
                             }}
-                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${selectedDriveId === drive.id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${selectedDriveId === drive.id ? 'bg-brand-primary/10 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'}`}
                         >
                             <div className="flex-shrink-0">
                                 {drive.type === 'saved' ? <HardDrive className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
@@ -158,27 +158,27 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
 
                     {/* Sentinel Element */}
                     <div ref={sentinelRef} className="h-4 w-full flex items-center justify-center">
-                        {loading && hasMore && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
+                        {loading && hasMore && <Loader2 className="w-4 h-4 text-brand-primary animate-spin" />}
                     </div>
 
                     {!loading && drives.length === 0 && (
-                        <div className="text-center py-4 text-gray-400 text-xs">
+                        <div className="text-center py-4 text-brand-text/30 text-xs">
                             No channels found
                         </div>
                     )}
                 </div>
 
-                <div className="p-4 border-t border-gray-100 bg-white flex-shrink-0">
+                <div className="p-4 border-t border-brand-text/10 bg-brand-bg flex-shrink-0">
                     <div className="flex items-center space-x-3 mb-3 px-2">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
+                        <div className="w-8 h-8 rounded-full bg-brand-primary/20 flex items-center justify-center text-brand-primary font-bold text-sm">
                             {user?.firstName?.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{user?.firstName}</p>
-                            <p className="text-xs text-gray-500 truncate">{user?.phone}</p>
+                            <p className="text-sm font-medium text-brand-text truncate">{user?.firstName}</p>
+                            <p className="text-xs text-brand-text/50 truncate">{user?.phone}</p>
                         </div>
                     </div>
-                    <button onClick={logout} className="w-full flex items-center justify-center space-x-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                    <button onClick={logout} className="w-full flex items-center justify-center space-x-2 px-4 py-2 text-sm text-brand-accent hover:bg-brand-accent/10 rounded-lg transition-colors">
                         <LogOut className="w-4 h-4" />
                         <span>Sign Out</span>
                     </button>
@@ -186,16 +186,16 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-brand-bg">
                 {/* Mobile Header */}
-                <div className="md:hidden flex items-center justify-between p-4 bg-white border-b border-gray-200">
-                    <span className="font-bold text-gray-800">TG Drive</span>
+                <div className="md:hidden flex items-center justify-between p-4 bg-brand-bg border-b border-brand-text/10">
+                    <span className="font-bold text-brand-text">TGramDrive</span>
                     <button onClick={() => setMobileMenuOpen(true)}>
-                        <Menu className="w-6 h-6 text-gray-600" />
+                        <Menu className="w-6 h-6 text-brand-text" />
                     </button>
                 </div>
 
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-bg p-4 md:p-6 custom-scrollbar">
                     {children}
                 </main>
             </div>

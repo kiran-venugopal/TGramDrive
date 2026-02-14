@@ -8,6 +8,7 @@ const { getClient } = require('../telegramClient');
 // However, to be safe and cleaner:
 const mimeLib = require('mime');
 const mime = mimeLib.default || mimeLib;
+const bigInt = require('big-integer');
 
 // Helper to handle BigInt serialization
 const serialize = (obj) => {
@@ -374,9 +375,48 @@ router.get('/view/:fileId', async (req, res) => {
             mimeType = 'image/jpeg';
         }
 
+        // Handle Range Requests (Video Streaming)
+        const range = req.headers.range;
+        if (range && fileSize) {
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            const chunksize = (end - start) + 1;
+
+            res.status(206);
+            res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+            res.setHeader('Accept-Ranges', 'bytes');
+            res.setHeader('Content-Length', chunksize);
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Cache-Control', 'no-cache'); // Streaming often works better without standard caching
+
+            // Using iterDownload with offset and limit
+            // Note: gram.js iterDownload 'offset' is in bytes if using bigInt or similar, but here it's likely just BigInt offset
+            // Actually, iterDownload takes 'offset' and 'limit' (count of chunks or bytes depending on implementation).
+            // But wait, gram.js `iterDownload` usually iterates *chunks*.
+            // To support byte-level seeking, we might need `downloadMedia` with offset/limit if supported, or `iterDownload` with specific offsets.
+            // Let's check `client.iterDownload` signature or use `client.downloadMedia` with offset.
+            // Actually `iterDownload` supports `offset` (in bytes) and `limit` (in bytes usually, or chunks).
+            // Let's assume standard gram.js behavior: offset is bytes.
+
+            const chunks = client.iterDownload({
+                file: msg.media,
+                offset: bigInt(start),
+                limit: chunksize,
+                requestSize: 512 * 1024, // 512KB chunks
+            });
+
+            for await (const chunk of chunks) {
+                res.write(chunk);
+            }
+            res.end();
+            return;
+        }
+
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Disposition', 'inline'); // Display in browser
         res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Accept-Ranges', 'bytes'); // Advertise support
         if (fileSize) {
             res.setHeader('Content-Length', fileSize);
         }
