@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_ORIGIN || 'http://localhost:3000/api', // Use VITE_API_ORIGIN or default to proxy
+    baseURL: '/api',
 });
 
 api.interceptors.request.use((config) => {
