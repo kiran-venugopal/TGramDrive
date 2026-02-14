@@ -13,6 +13,20 @@ app.use(express.json());
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/files', require('./routes/files'));
 
+// Serve static files from the React app
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+    // Check if request is for API
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ message: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
+
 // Keep process alive hack for gram.js
 setInterval(() => { }, 1000 * 60 * 60);
 

@@ -171,7 +171,6 @@ export const Dashboard = () => {
         e.preventDefault();
         if (!renamingFile || !newName.trim()) return;
 
-        const originalFileName = renamingFile.fileName;
         const targetFileId = renamingFile.id;
         const targetNewName = newName.trim();
 

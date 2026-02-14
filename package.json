@@ -1,13 +1,12 @@
 {
-  "dependencies": {
-    "axios": "^1.13.5",
-    "framer-motion": "^12.34.0",
-    "lucide-react": "^0.563.0",
-    "react-router-dom": "^7.13.0"
+  "name": "tg-files-deploy",
+  "version": "1.0.0",
+  "description": "Deployment root for TGramDrive",
+  "scripts": {
+    "build": "npm install --prefix client && npm run build --prefix client && npm install --prefix server",
+    "start": "npm start --prefix server"
   },
-  "devDependencies": {
-    "autoprefixer": "^10.4.24",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.18"
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
