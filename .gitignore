@@ -1,0 +1,11 @@
+node_modules
+.env
+dist
+.DS_Store
+*.session
+session.json
+session.txt
+debug_log.txt
+server/session.txt
+server/debug_log.txt
+debug_files.txt

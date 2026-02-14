@@ -1,0 +1,535 @@
+const express = require('express');
+const router = express.Router();
+
+const { getClient } = require('../telegramClient');
+// mime v4 is ESM-first, so require returns { default: Mime }
+// We need to attach getExtension from default if it's missing on the main object, 
+// or just use default.
+// However, to be safe and cleaner:
+const mimeLib = require('mime');
+const mime = mimeLib.default || mimeLib;
+
+// Helper to handle BigInt serialization
+const serialize = (obj) => {
+    return JSON.parse(JSON.stringify(obj, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+    ));
+};
+
+router.get('/drives', async (req, res) => {
+    try {
+        const client = getClient();
+        const { limit = 20, offsetDate, offsetId, offsetPeerId, search } = req.query;
+        const { Api } = require('telegram');
+        const bigInt = require('big-integer');
+
+        let drives = [];
+        let nextOffset = {};
+
+        // Always include 'Saved Messages' at the top of the first page/default view
+        if ((!offsetDate && !search) || (search && 'saved messages'.includes(search.toLowerCase()))) {
+            drives.push({ id: 'me', name: 'Saved Messages', type: 'saved' });
+        }
+
+        if (search) {
+            // Search channels/chats
+            const results = await client.invoke(new Api.contacts.Search({
+                q: search,
+                limit: parseInt(limit),
+            }));
+
+            // results.chats contains the matching channels/groups
+            const chats = results.chats || [];
+
+            for (const chat of chats) {
+                if (chat.className === 'Channel' || chat.className === 'Chat') {
+                    drives.push({
+                        id: chat.id.toString(),
+                        name: chat.title,
+                        type: chat.className === 'Channel' && (chat.broadcast || chat.megagroup) ? 'channel' : 'group'
+                    });
+                }
+            }
+        } else {
+            // Paginated list of dialogs
+            const options = {
+                limit: parseInt(limit),
+            };
+
+            if (offsetDate) options.offsetDate = parseInt(offsetDate);
+            if (offsetId) options.offsetId = parseInt(offsetId);
+            // Handling offsetPeer is complex with just ID, ignoring for simple date-based pagination for now
+            // which usually works fine for dialogs.
+
+            const dialogs = await client.getDialogs(options);
+
+            for (const d of dialogs) {
+                if (d.isChannel || d.isGroup) {
+                    drives.push({
+                        id: d.id.toString(),
+                        name: d.title,
+                        type: d.isChannel ? 'channel' : 'group'
+                    });
+                }
+            }
+
+            if (dialogs.length > 0) {
+                const last = dialogs[dialogs.length - 1];
+                nextOffset = {
+                    offsetDate: last.date,
+                    offsetId: last.message ? last.message.id : 0, // Top message ID (32-bit), not Peer ID
+                };
+            }
+        }
+
+        // Remove duplicates if Saved Messages was added and also returned by search/dialogs (rare but possible)
+        const uniqueDrives = Array.from(new Map(drives.map(item => [item.id, item])).values());
+
+        res.json(serialize({
+            drives: uniqueDrives,
+            nextOffset: Object.keys(nextOffset).length > 0 ? nextOffset : null
+        }));
+    } catch (error) {
+        console.error('Get drives error:', error);
+        res.status(500).json({ message: error.message || 'Failed to get drives' });
+    }
+});
+
+router.get('/:driveId', async (req, res) => {
+    const { driveId } = req.params;
+    const { limit = 20, offsetId, search } = req.query;
+
+    try {
+        const client = getClient();
+        let entity;
+        if (driveId === 'me') {
+            entity = 'me';
+        } else {
+            entity = driveId;
+        }
+
+        const iterOptions = {
+            limit: parseInt(limit),
+            // filter: new Api.InputMessagesFilterDocument(), // Removed to allow all media
+        };
+
+        if (offsetId) {
+            iterOptions.offsetId = parseInt(offsetId);
+        }
+
+        if (search) {
+            iterOptions.search = search;
+        }
+
+        const messages = await client.getMessages(entity, iterOptions);
+
+        const files = messages.map(msg => {
+            if (!msg.media) return null;
+
+            // Common properties
+            let id = msg.id;
+            let date = msg.date;
+            let size = 0;
+            let fileName = 'Unknown';
+            let mimeType = 'application/octet-stream';
+            let hasThumbnail = false;
+
+            if (msg.media.className === 'MessageMediaDocument' && msg.media.document) {
+                const doc = msg.media.document;
+                size = doc.size;
+                mimeType = doc.mimeType;
+
+                // 1. Try DocumentAttributeFilename
+                const attr = doc.attributes.find(a => a.className === 'DocumentAttributeFilename');
+                if (attr) {
+                    fileName = attr.fileName;
+                } else {
+                    // 2. Try Audio attributes
+                    const audioAttr = doc.attributes.find(a => a.className === 'DocumentAttributeAudio');
+                    if (audioAttr) {
+                        const title = audioAttr.title || 'Unknown Title';
+                        const performer = audioAttr.performer || 'Unknown Artist';
+                        fileName = `${performer} - ${title}`;
+                        if (!fileName.includes('.')) {
+                            const ext = mime.getExtension(mimeType) || 'mp3';
+                            fileName += `.${ext}`;
+                        }
+                    } else if (doc.attributes.some(a => a.className === 'DocumentAttributeVideo')) {
+                        // 3. Video
+                        fileName = `video_${id}`;
+                        const ext = mime.getExtension(mimeType) || 'mp4';
+                        fileName += `.${ext}`;
+                    } else {
+                        // 4. Generic/Voice
+                        const ext = mime.getExtension(mimeType) || 'bin';
+                        fileName = `file_${id}.${ext}`;
+                    }
+                }
+
+                hasThumbnail = !!(doc.thumbs && doc.thumbs.length > 0);
+
+            } else if (msg.media.className === 'MessageMediaPhoto' && msg.media.photo) {
+                const photo = msg.media.photo;
+                // Photos usually have sizes: s, m, x, y, w. 'size' is often in the object or last element
+                // We take the largest size for display info
+                let largest = photo.sizes[photo.sizes.length - 1];
+                size = largest.size || 0;
+                mimeType = 'image/jpeg';
+                fileName = `photo_${id}.jpg`;
+                hasThumbnail = true;
+
+            } else {
+                // GeoPoint, Contact, etc - skip for now or handle if requested?
+                // User asked for "all kind of files", probably strictly media files.
+                // We'll skip things that aren't clearly files/media.
+                return null;
+            }
+
+            return {
+                id,
+                fileName,
+                size,
+                mimeType,
+                date,
+                driveId,
+                hasThumbnail
+            };
+        }).filter(f => f !== null);
+
+        // Determine next offset
+        let nextOffsetId = null;
+        if (messages.length > 0) {
+            const lastMsg = messages[messages.length - 1];
+            nextOffsetId = lastMsg.id;
+        }
+
+        res.json(serialize({
+            files,
+            nextOffsetId: messages.length === parseInt(limit) ? nextOffsetId : null
+        }));
+    } catch (error) {
+        console.error('Get files error:', error);
+        res.status(500).json({ message: error.message || 'Failed to get files' });
+    }
+});
+
+router.get('/download/:fileId', async (req, res) => {
+    const { fileId } = req.params;
+    const { driveId } = req.query;
+
+    if (!driveId) {
+        return res.status(400).json({ message: 'Missing driveId query parameter' });
+    }
+
+    try {
+        const client = getClient();
+        let entity = driveId === 'me' ? 'me' : driveId;
+
+        // Fetch specific message to get media
+        const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
+        const msg = messages[0];
+
+        if (!msg || !msg.media) {
+            return res.status(404).json({ message: 'File not found' });
+        }
+
+        console.log(`Downloading file ${fileId} from ${driveId}...`);
+
+        let fileName = `file_${fileId}`;
+        let mimeType = 'application/octet-stream';
+        let fileSize = 0;
+
+        if (msg.media.document) {
+            const doc = msg.media.document;
+            mimeType = doc.mimeType;
+            fileSize = doc.size;
+            const attr = doc.attributes.find(a => a.className === 'DocumentAttributeFilename');
+            if (attr) fileName = attr.fileName;
+
+            // Check extension
+            if (!fileName.includes('.')) {
+                const ext = mime.getExtension(mimeType);
+                if (ext) fileName += `.${ext}`;
+            }
+        } else if (msg.media.photo) {
+            mimeType = 'image/jpeg';
+            fileName = `photo_${fileId}.jpg`;
+            const photo = msg.media.photo;
+            if (photo.sizes && photo.sizes.length > 0) {
+                const largest = photo.sizes[photo.sizes.length - 1];
+                fileSize = largest.size;
+            }
+        }
+
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', mimeType);
+        if (fileSize) {
+            res.setHeader('Content-Length', fileSize);
+        }
+
+        // Stream the file
+        const chunks = client.iterDownload({
+            file: msg.media,
+            requestSize: 1024 * 1024, // 1MB chunks
+        });
+
+        for await (const chunk of chunks) {
+            res.write(chunk);
+        }
+        res.end();
+
+    } catch (error) {
+        console.error('Download error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: error.message || 'Failed to download file' });
+        } else {
+            res.end();
+        }
+    }
+});
+
+router.get('/thumbnail/:fileId', async (req, res) => {
+    const { fileId } = req.params;
+    const { driveId } = req.query;
+
+    if (!driveId) {
+        return res.status(400).json({ message: 'Missing driveId query parameter' });
+    }
+
+    try {
+        const client = getClient();
+        let entity = driveId === 'me' ? 'me' : driveId;
+
+        const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
+        const msg = messages[0];
+
+        if (!msg || !msg.media) {
+            return res.status(404).json({ message: 'File not found' });
+        }
+
+        // Find best thumbnail size (closest to 200x200)
+        let thumbSize = 'm';
+
+        // Handle Photos
+        if (msg.media.className === 'MessageMediaPhoto') {
+            // Photos usually have s, m, x, y, w
+            // We can request 'm' directly
+            thumbSize = 'm';
+        } else if (msg.media.document && msg.media.document.thumbs) {
+            const availableTypes = msg.media.document.thumbs.map(t => t.type);
+            if (!availableTypes.includes('m')) {
+                if (availableTypes.includes('s')) thumbSize = 's';
+                else if (availableTypes.includes('x')) thumbSize = 'x';
+                else if (availableTypes.length > 0) thumbSize = availableTypes[0];
+            }
+        }
+
+        const buffer = await client.downloadMedia(msg, {
+            workers: 1,
+            thumb: thumbSize
+        });
+
+        if (!buffer || buffer.length === 0) {
+            return res.status(404).json({ message: 'Thumbnail not found' });
+        }
+
+        res.setHeader('Content-Type', 'image/jpeg'); // Thumbnails are usually JPEGs
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.send(buffer);
+
+    } catch (error) {
+        console.error('Thumbnail download error:', error);
+        res.status(500).json({ message: error.message || 'Failed to download thumbnail' });
+    }
+});
+
+router.get('/view/:fileId', async (req, res) => {
+    const { fileId } = req.params;
+    const { driveId } = req.query;
+
+    if (!driveId) {
+        return res.status(400).json({ message: 'Missing driveId query parameter' });
+    }
+
+    try {
+        const client = getClient();
+        let entity = driveId === 'me' ? 'me' : driveId;
+
+        const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
+        const msg = messages[0];
+
+        if (!msg || !msg.media) {
+            return res.status(404).json({ message: 'File not found' });
+        }
+
+        console.log(`Viewing file ${fileId} from ${driveId}...`);
+
+        let mimeType = 'application/octet-stream';
+        let fileSize = 0;
+
+        if (msg.media.document) {
+            mimeType = msg.media.document.mimeType;
+            fileSize = msg.media.document.size;
+        } else if (msg.media.photo) {
+            mimeType = 'image/jpeg';
+        }
+
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', 'inline'); // Display in browser
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        if (fileSize) {
+            res.setHeader('Content-Length', fileSize);
+        }
+
+        // Stream the file
+        const chunks = client.iterDownload({
+            file: msg.media,
+            requestSize: 512 * 1024,
+        });
+
+        for await (const chunk of chunks) {
+            res.write(chunk);
+        }
+        res.end();
+
+    } catch (error) {
+        console.error('View error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: error.message || 'Failed to view file' });
+        } else {
+            res.end();
+        }
+    }
+});
+
+const multer = require('multer');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+
+const upload = multer({ dest: os.tmpdir() });
+
+router.post('/upload', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        const client = getClient();
+        const { path, originalname, size } = req.file;
+        const { CustomFile } = require('telegram/client/uploads');
+
+        // Use file path for CustomFile to support large files and avoid buffer issues
+        const toUpload = new CustomFile(originalname, size, path);
+
+        await client.sendFile('me', {
+            file: toUpload,
+            forceDocument: true,
+            workers: 1,
+        });
+
+        // Clean up temp file
+        fs.unlink(path, (err) => {
+            if (err) console.error('Failed to delete temp upload file:', err);
+        });
+
+        res.json({ message: 'File uploaded successfully' });
+    } catch (error) {
+        console.error('Upload error:', error);
+        // Clean up temp file in case of error too
+        if (req.file && req.file.path) {
+            fs.unlink(req.file.path, (err) => {
+                if (err) console.error('Failed to delete temp upload file:', err);
+            });
+        }
+        res.status(500).json({ message: error.message || 'Failed to upload file' });
+    }
+});
+
+router.delete('/delete/:fileId', async (req, res) => {
+    const { fileId } = req.params;
+    const { driveId } = req.query;
+
+    if (!driveId) {
+        return res.status(400).json({ message: 'Missing driveId query parameter' });
+    }
+
+    try {
+        const client = getClient();
+        let entity = driveId === 'me' ? 'me' : driveId;
+
+        // Revoke: true deletes for everyone in chats/channels
+        await client.deleteMessages(entity, [parseInt(fileId)], { revoke: true });
+
+        res.json({ message: 'File deleted successfully' });
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({ message: error.message || 'Failed to delete file' });
+    }
+});
+
+router.put('/rename/:fileId', async (req, res) => {
+    const { fileId } = req.params;
+    const { driveId } = req.query;
+    const { newName } = req.body;
+
+    if (!driveId || !newName) {
+        return res.status(400).json({ message: 'Missing driveId or newName' });
+    }
+
+    let tempPath = null;
+
+    try {
+        const client = getClient();
+        let entity = driveId === 'me' ? 'me' : driveId;
+        const messageId = parseInt(fileId);
+
+        // 1. Get the original message to download its media
+        const messages = await client.getMessages(entity, { ids: [messageId] });
+        if (!messages || messages.length === 0) {
+            return res.status(404).json({ message: 'File not found' });
+        }
+        const message = messages[0];
+
+        // 2. Download media to temp file
+        // We use a random name for the temp file to avoid collisions, but we'll use newName for the upload
+        const tempFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        tempPath = path.join(os.tmpdir(), tempFileName);
+
+        const buffer = await client.downloadMedia(message, { workers: 1 });
+        if (!buffer) {
+            return res.status(500).json({ message: 'Failed to download file media' });
+        }
+        fs.writeFileSync(tempPath, buffer);
+
+        // 3. Create CustomFile with the NEW name
+        const { CustomFile } = require('telegram/client/uploads');
+        // We need the file size. 
+        const stats = fs.statSync(tempPath);
+        const toUpload = new CustomFile(newName, stats.size, tempPath);
+
+        // 4. Edit the message with the new file
+        // This effectively "renames" it by replacing the media with one having the new filename
+        await client.editMessage(entity, {
+            message: messageId,
+            file: toUpload,
+            forceDocument: true,
+            // specific logic to ensure caption or other traits if needed, but for now just file
+        });
+
+        res.json({ message: 'File renamed successfully' });
+
+    } catch (error) {
+        console.error('Rename error:', error);
+        res.status(500).json({ message: error.message || 'Failed to rename file' });
+    } finally {
+        // 5. Cleanup
+        if (tempPath && fs.existsSync(tempPath)) {
+            fs.unlink(tempPath, (err) => {
+                if (err) console.error('Failed to cleanup temp rename file:', err);
+            });
+        }
+    }
+});
+
+module.exports = router;
