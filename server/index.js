@@ -4,11 +4,21 @@ const cors = require('cors');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 
+const cookieParser = require('cookie-parser');
+const connectDB = require('./config/db');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Connect to Database
+connectDB();
+
+app.use(cors({
+    origin: true, // Allow all origins (or specify your frontend URL)
+    credentials: true // Allow cookies
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/files', require('./routes/files'));
@@ -36,37 +46,6 @@ app.get('/api/health', (req, res) => {
 });
 
 const startServer = async () => {
-    // Initialize Telegram Client if env vars are present
-    if (process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH) {
-        try {
-            const { initClient } = require('./telegramClient');
-            const fs = require('fs');
-            const path = require('path');
-
-            // Path to session file - robustly resolve to server root
-            const sessionPath = path.join(__dirname, 'session.txt');
-
-            let sessionString = '';
-            if (fs.existsSync(sessionPath)) {
-                sessionString = fs.readFileSync(sessionPath, 'utf8');
-                console.log('Loaded session from session.txt');
-            } else {
-                console.log('No session file found at', sessionPath);
-            }
-
-            await initClient(
-                process.env.TELEGRAM_API_ID,
-                process.env.TELEGRAM_API_HASH,
-                sessionString
-            );
-            console.log('Telegram client initialized');
-        } catch (error) {
-            console.error('Failed to initialize Telegram client:', error);
-        }
-    } else {
-        console.warn('TELEGRAM_API_ID and TELEGRAM_API_HASH not set. Telegram features will not work.');
-    }
-
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });

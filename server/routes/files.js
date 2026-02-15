@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
-
-const { getClient } = require('../telegramClient');
-// mime v4 is ESM-first, so require returns { default: Mime }
-// We need to attach getExtension from default if it's missing on the main object, 
-// or just use default.
-// However, to be safe and cleaner:
+const { protect } = require('../middleware/authMiddleware');
+const ClientManager = require('../ClientManager');
 const mimeLib = require('mime');
 const mime = mimeLib.default || mimeLib;
 const bigInt = require('big-integer');
+const multer = require('multer');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
 
 // Helper to handle BigInt serialization
 const serialize = (obj) => {
@@ -17,12 +17,26 @@ const serialize = (obj) => {
     ));
 };
 
+// Apply auth middleware to all routes
+router.use(protect);
+
+// Helper to get client safely
+const getUserClient = async (req, res) => {
+    const client = await ClientManager.getClient(req.userId);
+    if (!client) {
+        res.status(401).json({ error: 'Session expired or invalid, please login again' });
+        return null;
+    }
+    return client;
+};
+
 router.get('/drives', async (req, res) => {
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         const { limit = 20, offsetDate, offsetId, offsetPeerId, search } = req.query;
         const { Api } = require('telegram');
-        const bigInt = require('big-integer');
 
         let drives = [];
         let nextOffset = {};
@@ -59,8 +73,6 @@ router.get('/drives', async (req, res) => {
 
             if (offsetDate) options.offsetDate = parseInt(offsetDate);
             if (offsetId) options.offsetId = parseInt(offsetId);
-            // Handling offsetPeer is complex with just ID, ignoring for simple date-based pagination for now
-            // which usually works fine for dialogs.
 
             const dialogs = await client.getDialogs(options);
 
@@ -83,7 +95,7 @@ router.get('/drives', async (req, res) => {
             }
         }
 
-        // Remove duplicates if Saved Messages was added and also returned by search/dialogs (rare but possible)
+        // Remove duplicates if Saved Messages was added and also returned by search/dialogs
         const uniqueDrives = Array.from(new Map(drives.map(item => [item.id, item])).values());
 
         res.json(serialize({
@@ -101,7 +113,9 @@ router.get('/:driveId', async (req, res) => {
     const { limit = 20, offsetId, search } = req.query;
 
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         let entity;
         if (driveId === 'me') {
             entity = 'me';
@@ -111,7 +125,6 @@ router.get('/:driveId', async (req, res) => {
 
         const iterOptions = {
             limit: parseInt(limit),
-            // filter: new Api.InputMessagesFilterDocument(), // Removed to allow all media
         };
 
         if (offsetId) {
@@ -171,8 +184,6 @@ router.get('/:driveId', async (req, res) => {
 
             } else if (msg.media.className === 'MessageMediaPhoto' && msg.media.photo) {
                 const photo = msg.media.photo;
-                // Photos usually have sizes: s, m, x, y, w. 'size' is often in the object or last element
-                // We take the largest size for display info
                 let largest = photo.sizes[photo.sizes.length - 1];
                 size = largest.size || 0;
                 mimeType = 'image/jpeg';
@@ -180,9 +191,6 @@ router.get('/:driveId', async (req, res) => {
                 hasThumbnail = true;
 
             } else {
-                // GeoPoint, Contact, etc - skip for now or handle if requested?
-                // User asked for "all kind of files", probably strictly media files.
-                // We'll skip things that aren't clearly files/media.
                 return null;
             }
 
@@ -223,7 +231,9 @@ router.get('/download/:fileId', async (req, res) => {
     }
 
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         let entity = driveId === 'me' ? 'me' : driveId;
 
         // Fetch specific message to get media
@@ -298,7 +308,9 @@ router.get('/thumbnail/:fileId', async (req, res) => {
     }
 
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         let entity = driveId === 'me' ? 'me' : driveId;
 
         const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
@@ -313,8 +325,6 @@ router.get('/thumbnail/:fileId', async (req, res) => {
 
         // Handle Photos
         if (msg.media.className === 'MessageMediaPhoto') {
-            // Photos usually have s, m, x, y, w
-            // We can request 'm' directly
             thumbSize = 'm';
         } else if (msg.media.document && msg.media.document.thumbs) {
             const availableTypes = msg.media.document.thumbs.map(t => t.type);
@@ -353,7 +363,9 @@ router.get('/view/:fileId', async (req, res) => {
     }
 
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         let entity = driveId === 'me' ? 'me' : driveId;
 
         const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
@@ -388,16 +400,7 @@ router.get('/view/:fileId', async (req, res) => {
             res.setHeader('Accept-Ranges', 'bytes');
             res.setHeader('Content-Length', chunksize);
             res.setHeader('Content-Type', mimeType);
-            res.setHeader('Cache-Control', 'no-cache'); // Streaming often works better without standard caching
-
-            // Using iterDownload with offset and limit
-            // Note: gram.js iterDownload 'offset' is in bytes if using bigInt or similar, but here it's likely just BigInt offset
-            // Actually, iterDownload takes 'offset' and 'limit' (count of chunks or bytes depending on implementation).
-            // But wait, gram.js `iterDownload` usually iterates *chunks*.
-            // To support byte-level seeking, we might need `downloadMedia` with offset/limit if supported, or `iterDownload` with specific offsets.
-            // Let's check `client.iterDownload` signature or use `client.downloadMedia` with offset.
-            // Actually `iterDownload` supports `offset` (in bytes) and `limit` (in bytes usually, or chunks).
-            // Let's assume standard gram.js behavior: offset is bytes.
+            res.setHeader('Cache-Control', 'no-cache');
 
             const chunks = client.iterDownload({
                 file: msg.media,
@@ -416,7 +419,7 @@ router.get('/view/:fileId', async (req, res) => {
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Disposition', 'inline'); // Display in browser
         res.setHeader('Cache-Control', 'public, max-age=3600');
-        res.setHeader('Accept-Ranges', 'bytes'); // Advertise support
+        res.setHeader('Accept-Ranges', 'bytes');
         if (fileSize) {
             res.setHeader('Content-Length', fileSize);
         }
@@ -442,11 +445,6 @@ router.get('/view/:fileId', async (req, res) => {
     }
 });
 
-const multer = require('multer');
-const os = require('os');
-const fs = require('fs');
-const path = require('path');
-
 const upload = multer({ dest: os.tmpdir() });
 
 router.post('/upload', upload.single('file'), async (req, res) => {
@@ -455,7 +453,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             return res.status(400).json({ message: 'No file uploaded' });
         }
 
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) {
+            // Cleanup if auth failed
+            fs.unlink(req.file.path, () => { });
+            return;
+        }
+
         const { path, originalname, size } = req.file;
         const { CustomFile } = require('telegram/client/uploads');
 
@@ -495,7 +499,9 @@ router.delete('/delete/:fileId', async (req, res) => {
     }
 
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         let entity = driveId === 'me' ? 'me' : driveId;
 
         // Revoke: true deletes for everyone in chats/channels
@@ -520,7 +526,9 @@ router.put('/rename/:fileId', async (req, res) => {
     let tempPath = null;
 
     try {
-        const client = getClient();
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
         let entity = driveId === 'me' ? 'me' : driveId;
         const messageId = parseInt(fileId);
 
@@ -532,7 +540,6 @@ router.put('/rename/:fileId', async (req, res) => {
         const message = messages[0];
 
         // 2. Download media to temp file
-        // We use a random name for the temp file to avoid collisions, but we'll use newName for the upload
         const tempFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
         tempPath = path.join(os.tmpdir(), tempFileName);
 
@@ -549,12 +556,10 @@ router.put('/rename/:fileId', async (req, res) => {
         const toUpload = new CustomFile(newName, stats.size, tempPath);
 
         // 4. Edit the message with the new file
-        // This effectively "renames" it by replacing the media with one having the new filename
         await client.editMessage(entity, {
             message: messageId,
             file: toUpload,
             forceDocument: true,
-            // specific logic to ensure caption or other traits if needed, but for now just file
         });
 
         res.json({ message: 'File renamed successfully' });

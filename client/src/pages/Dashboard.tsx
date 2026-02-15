@@ -96,6 +96,23 @@ export const Dashboard = () => {
         return () => clearTimeout(timeout);
     }, [searchQuery]);
 
+    // Handle Escape key to close preview
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (previewFile) {
+                    setPreviewFile(null);
+                }
+                if (renamingFile) {
+                    setRenamingFile(null);
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [previewFile, renamingFile]);
+
     const fetchFiles = async (driveId: string, currentOffset: string | null, search: string, isNewSearch: boolean) => {
         setLoading(true);
         try {
@@ -318,7 +335,7 @@ export const Dashboard = () => {
 
             {/* Image Preview Modal */}
             {previewFile && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setPreviewFile(null)}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
                     <div className="max-w-5xl max-h-[90vh] w-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
                         <button
                             onClick={() => setPreviewFile(null)}

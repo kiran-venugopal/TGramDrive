@@ -21,6 +21,8 @@ const initClient = async (apiId, apiHash, sessionString) => {
     return client;
 };
 
+
+
 const getClient = () => {
     if (!client) {
         throw new Error('Telegram client not initialized. Call initClient first.');

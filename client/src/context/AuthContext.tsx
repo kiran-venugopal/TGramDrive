@@ -49,17 +49,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const signIn = async (phone: string, code: string, password?: string, phoneCodeHash?: string) => {
-        const res = await api.post('/auth/sign-in', { phone, code, password, phoneCodeHash });
-        if (res.data.user && res.data.session) {
-            localStorage.setItem('telegram_session', res.data.session);
-            setUser(res.data.user);
+        try {
+            const res = await api.post('/auth/sign-in', { phone, code, password, phoneCodeHash });
+            console.log('SignIn Response:', res.data);
+            if (res.data.user && res.data.token) {
+                console.log('Setting user and token');
+                localStorage.setItem('auth_token', res.data.token);
+                setUser(res.data.user);
+            } else {
+                console.warn('SignIn response missing user or token', res.data);
+            }
+            return res.data;
+        } catch (error) {
+            console.error('SignIn error:', error);
+            throw error;
         }
-        return res.data;
     };
 
     const logout = async () => {
         // Call server logout if needed
-        localStorage.removeItem('telegram_session');
+        localStorage.removeItem('auth_token');
         setUser(null);
     };
 

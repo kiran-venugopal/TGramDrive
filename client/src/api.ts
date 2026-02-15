@@ -2,13 +2,15 @@ import axios from 'axios';
 
 const api = axios.create({
     baseURL: '/api',
+    withCredentials: true, // Send cookies with requests
 });
 
 api.interceptors.request.use((config) => {
-    const session = localStorage.getItem('telegram_session');
-    if (session) {
-        config.headers.Authorization = `Bearer ${session}`;
-    }
+    // We rely on cookies now, but keep this if you want hybrid approach
+    // const token = localStorage.getItem('auth_token');
+    // if (token) {
+    //     config.headers.Authorization = `Bearer ${token}`;
+    // }
     return config;
 });
 
