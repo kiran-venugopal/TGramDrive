@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, HardDrive, MessageSquare, Menu, Search, Loader2 } from 'lucide-react';
+
 import api from '../api';
+import Logo from '../assets/logo.svg';
 
 interface Drive {
     id: string;
@@ -111,10 +113,9 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
             <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-brand-bg border-r border-brand-text/10 transform transition-transform duration-200 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
                 <div className="flex items-center justify-between p-4 border-b border-brand-text/10 flex-shrink-0">
                     <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 bg-brand-primary rounded-lg flex items-center justify-center text-white font-bold">
-                            TG
-                        </div>
+                        <img src={Logo} alt="TGramDrive Logo" className="w-8 h-8 rounded-lg" />
                         <span className="text-xl font-bold text-brand-text">TGramDrive</span>
+
                     </div>
                     <button onClick={() => setMobileMenuOpen(false)} className="md:hidden">
                         <Menu className="w-6 h-6 text-brand-text/70" />
@@ -129,7 +130,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                         </div>
                         <input
                             type="text"
-                            className="block w-full pl-9 pr-3 py-1.5 border border-brand-text/10 rounded-md leading-5 bg-black/20 text-brand-text placeholder-brand-text/30 focus:outline-none focus:bg-black/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-xs"
+                            className="block w-full pl-9 pr-3 py-1.5 border border-brand-text/10 rounded-sm leading-5 bg-black/20 text-brand-text placeholder-brand-text/30 focus:outline-none focus:bg-black/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-xs"
                             placeholder="Search channels..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -147,7 +148,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                                 onDriveSelect(drive.id);
                                 setMobileMenuOpen(false);
                             }}
-                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${selectedDriveId === drive.id ? 'bg-brand-primary/10 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'}`}
+                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${selectedDriveId === drive.id ? 'bg-brand-primary/5 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'}`}
                         >
                             <div className="flex-shrink-0">
                                 {drive.type === 'saved' ? <HardDrive className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
@@ -195,7 +196,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                     </button>
                 </div>
 
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-bg p-4 md:p-6 custom-scrollbar">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-bg custom-scrollbar">
                     {children}
                 </main>
             </div>

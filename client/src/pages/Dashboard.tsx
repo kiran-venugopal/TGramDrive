@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
     FileIcon,
+    Dot,
     Download,
     Clock,
     Database,
@@ -256,16 +257,7 @@ export const Dashboard = () => {
         if (mimeType.includes('pdf')) return <FileText className="w-12 h-12" />;
         return <FileIcon className="w-12 h-12" />;
     };
-    // Helper for smaller icons in the corner
-    const getSmallFileIcon = (mimeType: string) => {
-        if (!mimeType) return <FileIcon className="w-6 h-6" />;
-        if (mimeType.startsWith('image/')) return <FileImage className="w-6 h-6" />;
-        if (mimeType.startsWith('video/')) return <FileVideo className="w-6 h-6" />;
-        if (mimeType.startsWith('audio/')) return <FileAudio className="w-6 h-6" />;
-        if (mimeType.startsWith('text/')) return <FileText className="w-6 h-6" />;
-        if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('tar') || mimeType.includes('7z')) return <FileArchive className="w-6 h-6" />;
-        return <FileIcon className="w-6 h-6" />;
-    };
+
 
     const handleCardClick = (file: FileItem) => {
         if (isImage(file.mimeType) || isVideo(file.mimeType)) {
@@ -358,7 +350,7 @@ export const Dashboard = () => {
                 </div>
             )}
 
-            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="sticky top-0 z-20 bg-brand-bg/95 backdrop-blur-md p-4 -mt-2 mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-brand-text/5">
                 <div>
                     <h1 className="text-2xl font-bold text-brand-text">My Files</h1>
                     <p className="text-brand-text/50 text-sm">Browsing files from {selectedDrive === 'me' ? 'Saved Messages' : 'Channel'}</p>
@@ -372,7 +364,7 @@ export const Dashboard = () => {
                         </div>
                         <input
                             type="text"
-                            className="block w-full pl-10 pr-3 py-2 border border-brand-text/10 rounded-lg leading-5 bg-black/20 text-brand-text placeholder-brand-text/50 focus:outline-none focus:placeholder-brand-text/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                            className="block w-full pl-10 pr-3 py-2 border border-brand-text/10 rounded-sm leading-5 bg-black/20 text-brand-text placeholder-brand-text/50 focus:outline-none focus:placeholder-brand-text/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
                             placeholder="Search files..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -382,7 +374,7 @@ export const Dashboard = () => {
                     <button
                         onClick={handleUploadClick}
                         disabled={uploading}
-                        className="flex items-center justify-center space-x-2 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-primary/20"
+                        className="flex items-center justify-center space-x-2 px-4 py-2 bg-brand-primary text-white rounded-sm hover:bg-brand-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-primary/20"
                     >
                         {uploading ? (
                             <>
@@ -415,7 +407,7 @@ export const Dashboard = () => {
                     <p>{searchQuery ? 'No files match your search' : 'No files found in this drive'}</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+                <div className="grid grid-cols-1 p-4 py-0 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1 pb-4">
                     {files.map((file, index) => {
                         const isLastElement = files.length === index + 1;
                         return (
@@ -423,13 +415,13 @@ export const Dashboard = () => {
                                 ref={isLastElement ? lastFileElementRef : null}
                                 key={`${file.id}-${index}`}
                                 onClick={() => handleCardClick(file)}
-                                className={`bg-black/20 backdrop-blur-sm p-4 rounded-xl border border-brand-text/5 shadow-sm hover:shadow-lg hover:border-brand-text/20 transition-all group flex flex-col h-full ${isImage(file.mimeType) || isVideo(file.mimeType) ? 'cursor-pointer' : ''} relative`}
+                                className={`bg-black/20 backdrop-blur-sm hover:shadow-lg hover:bg-brand-primary/2 transition-all group flex flex-col h-full ${isImage(file.mimeType) || isVideo(file.mimeType) ? 'cursor-pointer' : ''} relative`}
                             >
                                 <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <DropdownMenu.Root>
                                         <DropdownMenu.Trigger asChild>
                                             <button
-                                                className="p-1.5 bg-brand-bg/90 hover:bg-brand-bg text-brand-text hover:text-brand-primary rounded-full shadow-sm backdrop-blur-sm transition-colors focus:outline-none border border-brand-text/10"
+                                                className="p-1.5 bg-brand-bg/90 hover:bg-brand-bg text-brand-text hover:text-brand-primary rounded-md shadow-sm backdrop-blur-sm transition-colors focus:outline-none border border-brand-text/10"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
                                                 <MoreVertical className="w-4 h-4" />
@@ -489,13 +481,13 @@ export const Dashboard = () => {
                                     </DropdownMenu.Root>
                                 </div>
 
-                                <div className="relative mb-3 flex-grow flex items-center justify-center bg-black/20 rounded-lg overflow-hidden min-h-[140px]">
+                                <div className="relative flex-grow flex items-center justify-center bg-black/20 overflow-hidden min-h-[250px]">
                                     {/* Thumbnail Logic */}
                                     {file.hasThumbnail ? (
                                         <img
                                             src={`/api/files/thumbnail/${file.id}?driveId=${selectedDrive}`}
                                             alt={file.fileName}
-                                            className="w-full h-full object-cover absolute inset-0"
+                                            className="w-full bg-black/20 h-full object-contain absolute inset-0"
                                             onError={(e) => {
                                                 (e.target as HTMLImageElement).style.display = 'none';
                                                 (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
@@ -507,19 +499,15 @@ export const Dashboard = () => {
                                     </div>
                                 </div>
 
-                                <div>
+                                <div className="py-1 px-2">
                                     <div className="flex items-start justify-between mb-1">
-                                        <h3 className="font-medium text-brand-text truncate flex-1" title={file.fileName}>{file.fileName}</h3>
-                                        {!file.hasThumbnail && (
-                                            <div className="text-brand-primary opacity-50 ml-2">
-                                                {getSmallFileIcon(file.mimeType)}
-                                            </div>
-                                        )}
+                                        <h3 className="font-medium text-center text-brand-text truncate flex-1" title={file.fileName}>{file.fileName}</h3>
                                     </div>
 
-                                    <div className="flex items-center justify-between text-xs text-brand-text/50">
+                                    <div className="flex items-center justify-center gap-1 text-xs text-brand-text/50">
                                         <span>{formatSize(file.size)}</span>
-                                        <div className="flex items-center group/date relative cursor-help">
+                                        <Dot className="w-3 h-3" />
+                                        <div className="flex text-center items-center group/date relative cursor-help">
                                             <Clock className="w-3 h-3 mr-1" />
                                             <span>{formatRelativeTime(file.date)}</span>
                                             {/* Tooltip logic remains */}

@@ -12,9 +12,40 @@
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-}
 
-body {
-  /* classes moved to index.html */
-  margin: 0;
+
+
+  body {
+    /* classes moved to index.html */
+    margin: 0;
+  }
+
+  /* Custom Scrollbar - Desktop Only */
+  @media (min-width: 768px) {
+    :root {
+      /* Firefox */
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.1) var(--color-brand-bg);
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--color-brand-bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      border: 2px solid var(--color-brand-bg);
+      /* Padding effect */
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--color-brand-primary);
+    }
+  }
 }
