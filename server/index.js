@@ -35,9 +35,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', server_time: new Date().toISOString() });
 });
 
-app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
-
+const startServer = async () => {
     // Initialize Telegram Client if env vars are present
     if (process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH) {
         try {
@@ -48,6 +46,7 @@ app.listen(PORT, async () => {
             // Path to session file - robustly resolve to server root
             const sessionPath = path.join(__dirname, 'session.txt');
 
+            let sessionString = '';
             if (fs.existsSync(sessionPath)) {
                 sessionString = fs.readFileSync(sessionPath, 'utf8');
                 console.log('Loaded session from session.txt');
@@ -67,4 +66,10 @@ app.listen(PORT, async () => {
     } else {
         console.warn('TELEGRAM_API_ID and TELEGRAM_API_HASH not set. Telegram features will not work.');
     }
-});
+
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+};
+
+startServer();
