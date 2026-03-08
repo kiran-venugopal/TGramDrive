@@ -6,6 +6,7 @@ interface User {
     firstName: string;
     username?: string;
     phone: string;
+    starredDrives?: string[];
 }
 
 interface AuthContextType {
@@ -15,6 +16,7 @@ interface AuthContextType {
     sendCode: (phone: string) => Promise<Record<string, unknown>>;
     signIn: (phone: string, code: string, password?: string, phoneCodeHash?: string) => Promise<Record<string, unknown>>;
     logout: () => void;
+    toggleStarDrive: (driveId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -72,8 +74,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
     };
 
+    const toggleStarDrive = async (driveId: string) => {
+        if (!user) return;
+        try {
+            const res = await api.post('/auth/star-drive', { driveId });
+            setUser(prev => prev ? { ...prev, starredDrives: res.data.starredDrives } : null);
+        } catch (error) {
+            console.error('Toggle star drive error:', error);
+            throw error;
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, sendCode, signIn, logout }}>
+        <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, sendCode, signIn, logout, toggleStarDrive }}>
             {children}
         </AuthContext.Provider>
     );

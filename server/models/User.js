@@ -12,6 +12,10 @@ const userSchema = new mongoose.Schema({
     },
     firstName: String,
     username: String,
+    starredDrives: {
+        type: [String],
+        default: [],
+    },
     createdAt: {
         type: Date,
         default: Date.now,

@@ -23,12 +23,14 @@ router.get('/me', protect, async (req, res) => {
         }
 
         const me = await client.getMe();
+        const user = await User.findById(req.userId);
         res.json({
             user: {
                 id: me.id.toString(),
                 firstName: me.firstName,
                 username: me.username,
-                phone: me.phone
+                phone: me.phone,
+                starredDrives: user ? user.starredDrives : []
             }
         });
     } catch (error) {
@@ -192,7 +194,8 @@ router.post('/sign-in', async (req, res) => {
                 id: userId,
                 firstName: me.firstName,
                 username: me.username,
-                phone: me.phone
+                phone: me.phone,
+                starredDrives: user.starredDrives || []
             },
             token
         });
@@ -203,6 +206,29 @@ router.post('/sign-in', async (req, res) => {
             return res.status(401).json({ error: 'SESSION_PASSWORD_NEEDED', message: '2FA Password needed' });
         }
         res.status(500).json({ message: error.message || 'Failed to sign in' });
+    }
+});
+
+router.post('/star-drive', protect, async (req, res) => {
+    const { driveId } = req.body;
+    if (!driveId) return res.status(400).json({ error: 'Missing driveId' });
+
+    try {
+        const user = await User.findById(req.userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const index = user.starredDrives.indexOf(driveId);
+        if (index > -1) {
+            user.starredDrives.splice(index, 1);
+        } else {
+            user.starredDrives.push(driveId);
+        }
+        await user.save();
+
+        res.json({ starredDrives: user.starredDrives });
+    } catch (error) {
+        console.error('Star drive error:', error);
+        res.status(500).json({ error: 'Failed to star drive' });
     }
 });
 

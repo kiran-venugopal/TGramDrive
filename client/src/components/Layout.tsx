@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, HardDrive, MessageSquare, Menu, Search, Loader2 } from 'lucide-react';
+import { LogOut, HardDrive, MessageSquare, Menu, Search, Loader2, Star } from 'lucide-react';
 
 import api from '../api';
 import Logo from '../assets/logo.svg';
@@ -18,7 +18,7 @@ interface LayoutProps {
 }
 
 export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps) => {
-    const { logout, user } = useAuth();
+    const { logout, user, toggleStarDrive } = useAuth();
     const [drives, setDrives] = useState<Drive[]>([]);
     const [loading, setLoading] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -108,6 +108,18 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchQuery]); // fetchDrives excluded to avoid loop
 
+    const sortedDrives = useMemo(() => {
+        return [...drives].sort((a, b) => {
+            if (a.id === 'me') return -1;
+            if (b.id === 'me') return 1;
+            const aStarred = user?.starredDrives?.includes(a.id);
+            const bStarred = user?.starredDrives?.includes(b.id);
+            if (aStarred && !bStarred) return -1;
+            if (!aStarred && bStarred) return 1;
+            return 0;
+        });
+    }, [drives, user?.starredDrives]);
+
     return (
         <div className="flex h-screen bg-brand-bg overflow-hidden text-brand-text">
             {/* Sidebar */}
@@ -142,20 +154,35 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                 <div className="p-2 space-y-1 overflow-y-auto flex-1 custom-scrollbar">
                     <h3 className="text-xs font-semibold text-brand-text/50 uppercase tracking-wider mb-2 px-2 mt-2">Drives</h3>
 
-                    {drives.map((drive) => (
-                        <button
+                    {sortedDrives.map((drive) => (
+                        <div
                             key={drive.id}
                             onClick={() => {
                                 onDriveSelect(drive.id);
                                 setMobileMenuOpen(false);
                             }}
-                            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${selectedDriveId === drive.id ? 'bg-brand-primary/5 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'}`}
+                            className={`w-full group flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${selectedDriveId === drive.id ? 'bg-brand-primary/5 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'}`}
                         >
-                            <div className="flex-shrink-0">
-                                {drive.type === 'saved' ? <HardDrive className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+                            <div className="flex items-center space-x-3 overflow-hidden">
+                                <div className="flex-shrink-0">
+                                    {drive.type === 'saved' ? <HardDrive className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+                                </div>
+                                <span className="truncate text-sm text-left">{drive.name}</span>
                             </div>
-                            <span className="truncate text-sm text-left">{drive.name}</span>
-                        </button>
+                            {drive.id !== 'me' && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (toggleStarDrive) {
+                                            toggleStarDrive(drive.id);
+                                        }
+                                    }}
+                                    className={`flex-shrink-0 p-1 rounded-md transition-opacity md:opacity-0 group-hover:opacity-100 opacity-100 ${user?.starredDrives?.includes(drive.id) ? 'text-yellow-500 md:opacity-100' : 'text-brand-text/30 hover:text-yellow-500 hover:bg-black/20'}`}
+                                >
+                                    <Star className={`w-4 h-4 ${user?.starredDrives?.includes(drive.id) ? 'fill-current' : ''}`} />
+                                </button>
+                            )}
+                        </div>
                     ))}
 
                     {/* Sentinel Element */}

@@ -10,6 +10,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const FileFolderMap = require('../models/FileFolderMap');
+const User = require('../models/User');
 
 // Helper to handle BigInt serialization
 const serialize = (obj) => {
@@ -45,6 +46,55 @@ router.get('/drives', async (req, res) => {
         // Always include 'Saved Messages' at the top of the first page/default view
         if ((!offsetDate && !search) || (search && 'saved messages'.includes(search.toLowerCase()))) {
             drives.push({ id: 'me', name: 'Saved Messages', type: 'saved' });
+        }
+
+        // Include starred drives on the first page
+        if (!offsetDate && !offsetId && !search) {
+            try {
+                const user = await User.findById(req.userId);
+                if (user && user.starredDrives && user.starredDrives.length > 0) {
+                    for (const driveId of user.starredDrives) {
+                        if (driveId === 'me') continue;
+                        try {
+                            let entity;
+                            try {
+                                entity = await client.getEntity(driveId);
+                            } catch (e) {
+                                if (/^-?\d+$/.test(driveId)) {
+                                    entity = await client.getEntity(bigInt(driveId));
+                                }
+                            }
+
+                            if (entity) {
+                                // To match getDialogs peer IDs for deduplication, we must prepend -100 for channels/megagroups
+                                // because getDialogs returns the prefixed peer ID, but getEntity returns the raw ID.
+                                let entityIdStr = entity.id.toString();
+                                const isChannelOrGroup = entity.className === 'Channel' || entity.className === 'Chat';
+                                const type = entity.className === 'Channel' && (entity.broadcast || entity.megagroup) ? 'channel' : 'group';
+
+                                if (isChannelOrGroup && !entityIdStr.startsWith('-100') && !entityIdStr.startsWith('-')) {
+                                    // Telethon/GramJS commonly uses -100 for channels/megagroups
+                                    if (entity.className === 'Channel') {
+                                        entityIdStr = `-100${entityIdStr}`;
+                                    } else if (entity.className === 'Chat') {
+                                        entityIdStr = `-${entityIdStr}`;
+                                    }
+                                }
+
+                                drives.push({
+                                    id: entityIdStr,
+                                    name: entity.title || entity.firstName || entity.username || 'Unknown',
+                                    type: type
+                                });
+                            }
+                        } catch (err) {
+                            console.error(`Could not fetch starred entity ${driveId}:`, err.message);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching user starred drives:', err);
+            }
         }
 
         if (search) {
