@@ -9,6 +9,7 @@ const multer = require('multer');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const FileFolderMap = require('../models/FileFolderMap');
 
 // Helper to handle BigInt serialization
 const serialize = (obj) => {
@@ -110,37 +111,21 @@ router.get('/drives', async (req, res) => {
 
 router.get('/:driveId', async (req, res) => {
     const { driveId } = req.params;
-    const { limit = 20, offsetId, search } = req.query;
+    const { limit = 20, offsetId, search, folderId } = req.query;
 
     try {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity;
-        if (driveId === 'me') {
-            entity = 'me';
-        } else {
-            entity = driveId;
-        }
+        let entity = driveId === 'me' ? 'me' : driveId;
+        const targetLimit = parseInt(limit);
+        let nextOffsetId = offsetId ? parseInt(offsetId) : null;
+        let files = [];
 
-        const iterOptions = {
-            limit: parseInt(limit),
-        };
+        // Helper function to parse message into File object
+        const parseMessage = (msg) => {
+            if (!msg || !msg.media) return null;
 
-        if (offsetId) {
-            iterOptions.offsetId = parseInt(offsetId);
-        }
-
-        if (search) {
-            iterOptions.search = search;
-        }
-
-        const messages = await client.getMessages(entity, iterOptions);
-
-        const files = messages.map(msg => {
-            if (!msg.media) return null;
-
-            // Common properties
             let id = msg.id;
             let date = msg.date;
             let size = 0;
@@ -153,35 +138,23 @@ router.get('/:driveId', async (req, res) => {
                 size = doc.size;
                 mimeType = doc.mimeType;
 
-                // 1. Try DocumentAttributeFilename
                 const attr = doc.attributes.find(a => a.className === 'DocumentAttributeFilename');
                 if (attr) {
                     fileName = attr.fileName;
                 } else {
-                    // 2. Try Audio attributes
                     const audioAttr = doc.attributes.find(a => a.className === 'DocumentAttributeAudio');
                     if (audioAttr) {
                         const title = audioAttr.title || 'Unknown Title';
                         const performer = audioAttr.performer || 'Unknown Artist';
                         fileName = `${performer} - ${title}`;
-                        if (!fileName.includes('.')) {
-                            const ext = mime.getExtension(mimeType) || 'mp3';
-                            fileName += `.${ext}`;
-                        }
+                        if (!fileName.includes('.')) fileName += `.${mime.getExtension(mimeType) || 'mp3'}`;
                     } else if (doc.attributes.some(a => a.className === 'DocumentAttributeVideo')) {
-                        // 3. Video
-                        fileName = `video_${id}`;
-                        const ext = mime.getExtension(mimeType) || 'mp4';
-                        fileName += `.${ext}`;
+                        fileName = `video_${id}.${mime.getExtension(mimeType) || 'mp4'}`;
                     } else {
-                        // 4. Generic/Voice
-                        const ext = mime.getExtension(mimeType) || 'bin';
-                        fileName = `file_${id}.${ext}`;
+                        fileName = `file_${id}.${mime.getExtension(mimeType) || 'bin'}`;
                     }
                 }
-
                 hasThumbnail = !!(doc.thumbs && doc.thumbs.length > 0);
-
             } else if (msg.media.className === 'MessageMediaPhoto' && msg.media.photo) {
                 const photo = msg.media.photo;
                 let largest = photo.sizes[photo.sizes.length - 1];
@@ -189,32 +162,98 @@ router.get('/:driveId', async (req, res) => {
                 mimeType = 'image/jpeg';
                 fileName = `photo_${id}.jpg`;
                 hasThumbnail = true;
-
             } else {
                 return null;
             }
 
-            return {
-                id,
-                fileName,
-                size,
-                mimeType,
-                date,
-                driveId,
-                hasThumbnail
-            };
-        }).filter(f => f !== null);
+            let uploader = 'Unknown';
+            if (msg.sender) {
+                if (msg.sender.username) uploader = `@${msg.sender.username}`;
+                else if (msg.sender.firstName) uploader = msg.sender.firstName + (msg.sender.lastName ? ` ${msg.sender.lastName}` : '');
+                else if (msg.sender.title) uploader = msg.sender.title;
+            }
 
-        // Determine next offset
-        let nextOffsetId = null;
-        if (messages.length > 0) {
-            const lastMsg = messages[messages.length - 1];
-            nextOffsetId = lastMsg.id;
+            return { id, fileName, size, mimeType, date, driveId, hasThumbnail, uploader };
+        };
+
+        if (folderId && !search) {
+            // IF IN A SPECIFIC FOLDER: Fetch mappings, then exact messages
+            const query = { folderId, driveId, userId: req.userId };
+            if (nextOffsetId) {
+                query.messageId = { $lt: nextOffsetId };
+            }
+
+            const mappings = await FileFolderMap.find(query)
+                .sort({ messageId: -1 })
+                .limit(targetLimit);
+
+            if (mappings.length > 0) {
+                const messageIds = mappings.map(m => m.messageId);
+                const messages = await client.getMessages(entity, { ids: messageIds });
+
+                // Keep the fetched messages in the exact order requested
+                const fetchedMap = new Map();
+                for (const msg of messages) {
+                    if (msg) fetchedMap.set(msg.id, msg);
+                }
+
+                for (const msgId of messageIds) {
+                    if (fetchedMap.has(msgId)) {
+                        const parsed = parseMessage(fetchedMap.get(msgId));
+                        if (parsed) files.push(parsed);
+                    }
+                }
+
+                // If we got as many mappings as the limit, there might be more
+                if (mappings.length === targetLimit) {
+                    nextOffsetId = mappings[mappings.length - 1].messageId;
+                } else {
+                    nextOffsetId = null;
+                }
+            } else {
+                nextOffsetId = null;
+            }
+
+        } else {
+            // IF AT ROOT (OR SEARCHING): Fetch normally, but exclude mapped files if not searching globally
+            // A search might transcend folders, or we can choose to restrict it to root.
+            // Let's exclude mapped files from root view.
+
+            // Get all mapped files in this drive to ignore them
+            const mappedMsgSet = new Set(await FileFolderMap.find({ driveId, userId: req.userId }).distinct('messageId'));
+
+            // Pagination Loop
+            let maxLoops = 10; // Prevent infinite loops if there are huge gaps
+
+            while (files.length < targetLimit && maxLoops > 0) {
+                const iterOptions = { limit: 50 }; // Fetch in chunks
+                if (nextOffsetId) iterOptions.offsetId = nextOffsetId;
+                if (search) iterOptions.search = search;
+
+                const messages = await client.getMessages(entity, iterOptions);
+                if (messages.length === 0) {
+                    nextOffsetId = null; // No more messages
+                    break;
+                }
+
+                for (const msg of messages) {
+                    if (files.length >= targetLimit) break;
+
+                    // IF AT ROOT, ignore files that are inside folders
+                    if (!search && mappedMsgSet.has(msg.id)) continue;
+
+                    const parsed = parseMessage(msg);
+                    if (parsed) files.push(parsed);
+                }
+
+                nextOffsetId = messages[messages.length - 1].id;
+                maxLoops--;
+            }
         }
 
         res.json(serialize({
             files,
-            nextOffsetId: messages.length === parseInt(limit) ? nextOffsetId : null
+            nextOffsetId: nextOffsetId || null
         }));
     } catch (error) {
         console.error('Get files error:', error);
@@ -466,11 +505,21 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         // Use file path for CustomFile to support large files and avoid buffer issues
         const toUpload = new CustomFile(originalname, size, path);
 
-        await client.sendFile('me', {
+        const message = await client.sendFile('me', {
             file: toUpload,
             forceDocument: true,
             workers: 1,
         });
+
+        const { folderId } = req.body;
+        if (folderId && message && message.id) {
+            await FileFolderMap.create({
+                messageId: message.id,
+                driveId: 'me',
+                folderId,
+                userId: req.userId
+            });
+        }
 
         // Clean up temp file
         fs.unlink(path, (err) => {
@@ -503,9 +552,13 @@ router.delete('/delete/:fileId', async (req, res) => {
         if (!client) return;
 
         let entity = driveId === 'me' ? 'me' : driveId;
+        const msgId = parseInt(fileId);
 
         // Revoke: true deletes for everyone in chats/channels
-        await client.deleteMessages(entity, [parseInt(fileId)], { revoke: true });
+        await client.deleteMessages(entity, [msgId], { revoke: true });
+
+        // Clean up from folders
+        await FileFolderMap.deleteMany({ messageId: msgId, driveId, userId: req.userId });
 
         res.json({ message: 'File deleted successfully' });
     } catch (error) {

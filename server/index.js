@@ -22,6 +22,7 @@ app.use(cookieParser());
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/files', require('./routes/files'));
+app.use('/api/folders', require('./routes/folders'));
 
 // Serve static files from the React app
 const path = require('path');

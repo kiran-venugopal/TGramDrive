@@ -19,31 +19,62 @@ import {
     MoreVertical,
     Trash2,
     Eye,
-    Edit
+    Edit,
+    Folder as FolderIcon,
+    FolderPlus,
+    ChevronRight,
+    Home,
+    CheckSquare,
+    Square,
+    ArrowRightLeft,
+    CornerLeftUp
 } from 'lucide-react';
 
 interface FileItem {
-    id: any; // BigInt or String
+    id: any;
     fileName: string;
     size: number;
     mimeType: string;
     date: number;
     driveId: string;
     hasThumbnail?: boolean;
+    uploader?: string;
+}
+
+interface FolderItem {
+    _id: string;
+    name: string;
+    parentId: string | null;
+    createdAt: string;
+    driveId: string;
 }
 
 export const Dashboard = () => {
     const [selectedDrive, setSelectedDrive] = useState('me');
     const [files, setFiles] = useState<FileItem[]>([]);
+    const [folders, setFolders] = useState<FolderItem[]>([]);
+    const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+    const [folderPath, setFolderPath] = useState<{ id: string, name: string }[]>([]);
+
     const [loading, setLoading] = useState(false);
     const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [offsetId, setOffsetId] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(true);
 
+    // Selection
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedFiles, setSelectedFiles] = useState<Set<any>>(new Set());
+
     // Rename State
     const [renamingFile, setRenamingFile] = useState<FileItem | null>(null);
     const [newName, setNewName] = useState('');
+
+    // Folder Actions
+    const [newFolderModalOpen, setNewFolderModalOpen] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+    const [folderAction, setFolderAction] = useState<{ type: 'rename' | 'delete' | 'move', folder?: FolderItem, targetFiles?: FileItem[] } | null>(null);
+    const [moveTarget, setMoveTarget] = useState<string | null>(null); // null = root
 
     // Upload State
     const [uploading, setUploading] = useState(false);
@@ -57,68 +88,105 @@ export const Dashboard = () => {
         if (observer.current) observer.current.disconnect();
         observer.current = new IntersectionObserver(entries => {
             if (entries[0].isIntersecting && hasMore) {
-                fetchFiles(selectedDrive, offsetId, searchQuery, false);
+                fetchFiles(selectedDrive, offsetId, searchQuery, false, currentFolder);
             }
         });
         if (node) observer.current.observe(node);
-    }, [loading, hasMore, offsetId, selectedDrive, searchQuery]);
+    }, [loading, hasMore, offsetId, selectedDrive, searchQuery, currentFolder]);
 
-    useEffect(() => {
-        // Reset state when drive changes
+    const resetFilesState = () => {
         setFiles([]);
         setOffsetId(null);
         setHasMore(true);
+        setSelectedFiles(new Set());
+    };
+
+    useEffect(() => {
+        setCurrentFolder(null);
+        setFolderPath([]);
+        resetFilesState();
         setSearchQuery('');
-        fetchFiles(selectedDrive, null, '', true);
+        fetchFolders(selectedDrive, null);
+        fetchFiles(selectedDrive, null, '', true, null);
     }, [selectedDrive]);
+
+    // Navigate to a folder
+    const handleNavigate = (folderId: string | null, folderName?: string) => {
+        setCurrentFolder(folderId);
+        if (folderId && folderName) {
+            const index = folderPath.findIndex(p => p.id === folderId);
+            if (index !== -1) {
+                setFolderPath(folderPath.slice(0, index + 1));
+            } else {
+                setFolderPath([...folderPath, { id: folderId, name: folderName }]);
+            }
+        } else {
+            setFolderPath([]);
+        }
+        setSearchQuery('');
+        resetFilesState();
+        fetchFolders(selectedDrive, folderId);
+        fetchFiles(selectedDrive, null, '', true, folderId);
+    };
 
     // Debounce search
     useEffect(() => {
         if (searchQuery === '') {
             if (offsetId !== null || files.length > 0) {
-                setFiles([]);
-                setOffsetId(null);
-                setHasMore(true);
-                fetchFiles(selectedDrive, null, '', true);
+                resetFilesState();
+                fetchFolders(selectedDrive, currentFolder);
+                fetchFiles(selectedDrive, null, '', true, currentFolder);
             } else if (files.length === 0 && !loading) {
-                fetchFiles(selectedDrive, null, '', true);
+                fetchFolders(selectedDrive, currentFolder);
+                fetchFiles(selectedDrive, null, '', true, currentFolder);
             }
             return;
         }
 
         const timeout = setTimeout(() => {
-            setFiles([]);
-            setOffsetId(null);
-            setHasMore(true);
-            fetchFiles(selectedDrive, null, searchQuery, true);
+            resetFilesState();
+            setFolders([]); // hide folders when searching
+            fetchFiles(selectedDrive, null, searchQuery, true, currentFolder);
         }, 500);
 
         return () => clearTimeout(timeout);
     }, [searchQuery]);
 
-    // Handle Escape key to close preview
+    // Escape handling
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                if (previewFile) {
-                    setPreviewFile(null);
-                }
-                if (renamingFile) {
-                    setRenamingFile(null);
+                setPreviewFile(null);
+                setRenamingFile(null);
+                setNewFolderModalOpen(false);
+                setFolderAction(null);
+                if (selectionMode) {
+                    setSelectionMode(false);
+                    setSelectedFiles(new Set());
                 }
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [previewFile, renamingFile]);
+    }, [selectionMode, previewFile, renamingFile]);
 
-    const fetchFiles = async (driveId: string, currentOffset: string | null, search: string, isNewSearch: boolean) => {
+    const fetchFolders = async (driveId: string, parentId: string | null) => {
+        try {
+            const res = await api.get(`/folders/${driveId}${parentId ? `?parentId=${parentId}` : ''}`);
+            setFolders(res.data);
+        } catch (error) {
+            console.error('Failed to fetch folders', error);
+        }
+    };
+
+    const fetchFiles = async (driveId: string, currentOffset: string | null, search: string, isNewSearch: boolean, folderId: string | null) => {
         setLoading(true);
         try {
             const params: any = { limit: 20 };
             if (currentOffset) params.offsetId = currentOffset;
             if (search) params.search = search;
+            if (folderId) params.folderId = folderId;
 
             const res = await api.get(`/files/${driveId}`, { params });
 
@@ -152,12 +220,13 @@ export const Dashboard = () => {
 
         const formData = new FormData();
         formData.append('file', file);
+        if (currentFolder) {
+            formData.append('folderId', currentFolder);
+        }
 
         try {
             await api.post('/files/upload', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
+                headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress: (progressEvent) => {
                     const total = progressEvent.total || 1;
                     const progress = Math.round((progressEvent.loaded * 100) / total);
@@ -165,11 +234,8 @@ export const Dashboard = () => {
                 },
             });
 
-            // Refresh files
-            setFiles([]);
-            setOffsetId(null);
-            setHasMore(true);
-            fetchFiles(selectedDrive, null, searchQuery, true);
+            resetFilesState();
+            fetchFiles(selectedDrive, null, searchQuery, true, currentFolder);
         } catch (error) {
             console.error('Upload failed', error);
             alert('Failed to upload file.');
@@ -180,10 +246,7 @@ export const Dashboard = () => {
         }
     };
 
-    const handleRenameClick = (file: FileItem) => {
-        setRenamingFile(file);
-        setNewName(file.fileName);
-    };
+    // --- File Actions ---
 
     const handleRenameSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -191,45 +254,138 @@ export const Dashboard = () => {
 
         const targetFileId = renamingFile.id;
         const targetNewName = newName.trim();
-
-        // Optimistic Update
         const previousFiles = [...files];
-        setFiles(prev => prev.map(f =>
-            f.id === targetFileId ? { ...f, fileName: targetNewName } : f
-        ));
+        setFiles(prev => prev.map(f => f.id === targetFileId ? { ...f, fileName: targetNewName } : f));
+
         setRenamingFile(null);
         setNewName('');
 
         const toastId = toast.loading('Renaming file...');
-
         try {
-            await api.put(`/files/rename/${targetFileId}?driveId=${selectedDrive}`, {
-                newName: targetNewName
-            });
+            await api.put(`/files/rename/${targetFileId}?driveId=${selectedDrive}`, { newName: targetNewName });
             toast.success('File renamed successfully', { id: toastId });
         } catch (error) {
             console.error('Rename failed', error);
-            // Revert on error
             setFiles(previousFiles);
             toast.error('Failed to rename file', { id: toastId });
         }
     };
 
     const handleDelete = async (file: FileItem) => {
-        if (!window.confirm(`Are you sure you want to delete "${file.fileName}"?`)) {
-            return;
-        }
-
+        if (!window.confirm(`Are you sure you want to delete "${file.fileName}"?`)) return;
         try {
             await api.delete(`/files/delete/${file.id}?driveId=${selectedDrive}`);
-
-            // Remove from local state immediately
             setFiles(prev => prev.filter(f => f.id !== file.id));
         } catch (error) {
             console.error('Delete failed', error);
             alert('Failed to delete file.');
         }
     };
+
+    const handleDeleteSelected = async () => {
+        if (!window.confirm(`Are you sure you want to delete ${selectedFiles.size} files?`)) return;
+        const toastId = toast.loading('Deleting files...');
+        try {
+            for (const fileId of selectedFiles) {
+                await api.delete(`/files/delete/${fileId}?driveId=${selectedDrive}`);
+            }
+            setFiles(prev => prev.filter(f => !selectedFiles.has(f.id)));
+            setSelectedFiles(new Set());
+            setSelectionMode(false);
+            toast.success('Files deleted successfully', { id: toastId });
+        } catch (error) {
+            console.error('Delete failed', error);
+            toast.error('Failed to delete some files', { id: toastId });
+        }
+    };
+
+    // --- Folder Actions ---
+
+    const handleCreateFolder = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newFolderName.trim()) return;
+
+        const toastId = toast.loading('Creating folder...');
+        try {
+            await api.post('/folders', {
+                name: newFolderName,
+                driveId: selectedDrive,
+                parentId: currentFolder,
+                fileIds: Array.from(selectedFiles) // Immediately move selected files into it
+            });
+
+            setNewFolderModalOpen(false);
+            setNewFolderName('');
+            setSelectedFiles(new Set());
+            setSelectionMode(false);
+
+            fetchFolders(selectedDrive, currentFolder);
+            if (selectedFiles.size > 0) {
+                resetFilesState();
+                fetchFiles(selectedDrive, null, searchQuery, true, currentFolder);
+            }
+            toast.success('Folder created', { id: toastId });
+        } catch (error) {
+            console.error('Create error', error);
+            toast.error('Failed to create folder', { id: toastId });
+        }
+    };
+
+    const handleRenameFolder = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (folderAction?.type !== 'rename' || !folderAction.folder || !newFolderName.trim()) return;
+
+        const toastId = toast.loading('Renaming folder...');
+        try {
+            await api.put(`/folders/${folderAction.folder._id}`, { name: newFolderName });
+            fetchFolders(selectedDrive, currentFolder);
+            setFolderAction(null);
+            toast.success('Folder renamed', { id: toastId });
+        } catch (error) {
+            toast.error('Failed to rename folder', { id: toastId });
+        }
+    };
+
+    const handleDeleteFolder = async () => {
+        if (folderAction?.type !== 'delete' || !folderAction.folder) return;
+
+        const toastId = toast.loading('Deleting folder...');
+        try {
+            await api.delete(`/folders/${folderAction.folder._id}`);
+            fetchFolders(selectedDrive, currentFolder);
+            setFolderAction(null);
+            toast.success('Folder deleted', { id: toastId });
+        } catch (error) {
+            toast.error('Failed to delete folder', { id: toastId });
+        }
+    };
+
+    const handleMoveFiles = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (folderAction?.type !== 'move' || !folderAction.targetFiles) return;
+
+        const toastId = toast.loading('Moving files...');
+        try {
+            await api.post('/folders/move', {
+                fileIds: folderAction.targetFiles.map(f => f.id),
+                driveId: selectedDrive,
+                targetFolderId: moveTarget === 'root' ? null : moveTarget
+            });
+
+            // Remove moved files from current view
+            const movingIds = new Set(folderAction.targetFiles.map(f => f.id));
+            setFiles(prev => prev.filter(f => !movingIds.has(f.id)));
+
+            setSelectedFiles(new Set());
+            setSelectionMode(false);
+            setFolderAction(null);
+            toast.success('Files moved successfully', { id: toastId });
+        } catch (error) {
+            toast.error('Failed to move files', { id: toastId });
+        }
+    };
+
+    // --- Formatters ---
 
     const formatSize = (bytes: number) => {
         if (bytes === 0) return '0 B';
@@ -253,15 +409,10 @@ export const Dashboard = () => {
     };
 
     const formatExactDate = (timestamp: number) => {
-        return new Date(timestamp * 1000).toLocaleDateString('en-GB', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
+        return new Date(timestamp * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     };
 
     const isImage = (mimeType: string) => mimeType ? mimeType.startsWith('image/') : false;
-
     const isVideo = (mimeType: string) => mimeType ? mimeType.startsWith('video/') : false;
 
     const getFileIcon = (mimeType: string) => {
@@ -275,276 +426,374 @@ export const Dashboard = () => {
         return <FileIcon className="w-12 h-12" />;
     };
 
-
     const handleCardClick = (file: FileItem) => {
-        if (isImage(file.mimeType) || isVideo(file.mimeType)) {
+        if (selectionMode) {
+            const newSet = new Set(selectedFiles);
+            if (newSet.has(file.id)) newSet.delete(file.id);
+            else newSet.add(file.id);
+            setSelectedFiles(newSet);
+            if (newSet.size === 0) setSelectionMode(false);
+        } else {
             setPreviewFile(file);
         }
     };
 
-    return (
-        <Layout onDriveSelect={setSelectedDrive} selectedDriveId={selectedDrive}>
-            <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={handleFileChange}
-            />
+    const toggleSelectionMode = (file: FileItem) => {
+        if (!selectionMode) {
+            setSelectionMode(true);
+            setSelectedFiles(new Set([file.id]));
+        } else {
+            const newSet = new Set(selectedFiles);
+            if (newSet.has(file.id)) newSet.delete(file.id);
+            else newSet.add(file.id);
+            setSelectedFiles(newSet);
+            if (newSet.size === 0) setSelectionMode(false);
+        }
+    };
 
-            {/* Rename Modal */}
+    return (
+        <Layout onDriveSelect={(id) => { setSelectedDrive(id); setSelectionMode(false); setSelectedFiles(new Set()); }} selectedDriveId={selectedDrive}>
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+
+            {/* Modals */}
             {renamingFile && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setRenamingFile(null)}>
                     <div className="bg-brand-bg border border-brand-text/10 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b border-brand-text/10 flex justify-between items-center">
                             <h3 className="font-medium text-brand-text">Rename File</h3>
-                            <button onClick={() => setRenamingFile(null)} className="text-brand-text/50 hover:text-brand-text">
-                                <X className="w-5 h-5" />
-                            </button>
                         </div>
                         <form onSubmit={handleRenameSubmit} className="p-4">
-                            <div className="mb-4">
-                                <label className="block text-sm text-brand-text/70 mb-1">Name</label>
-                                <input
-                                    type="text"
-                                    value={newName}
-                                    onChange={(e) => setNewName(e.target.value)}
-                                    className="w-full px-3 py-2 border border-brand-text/20 rounded-lg bg-black/20 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent placeholder-brand-text/30"
-                                    autoFocus
-                                />
-                            </div>
+                            <input
+                                type="text"
+                                value={newName}
+                                onChange={(e) => setNewName(e.target.value)}
+                                className="w-full px-3 py-2 border border-brand-text/20 rounded-lg bg-black/20 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-primary placeholder-brand-text/30 mb-4"
+                                autoFocus
+                            />
                             <div className="flex justify-end space-x-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setRenamingFile(null)}
-                                    className="px-4 py-2 text-brand-text/70 hover:bg-brand-text/5 rounded-lg transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!newName.trim() || newName === renamingFile.fileName}
-                                    className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Rename
-                                </button>
+                                <button type="button" onClick={() => setRenamingFile(null)} className="px-4 py-2 text-brand-text/70 hover:bg-brand-text/5 rounded-lg">Cancel</button>
+                                <button type="submit" disabled={!newName.trim()} className="px-4 py-2 bg-brand-primary text-white rounded-lg disabled:opacity-50">Rename</button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* Image Preview Modal */}
-            {previewFile && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-                    <div className="max-w-5xl max-h-[90vh] w-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                        <button
-                            onClick={() => setPreviewFile(null)}
-                            className="absolute top-4 right-4 text-white hover:text-brand-primary transition-colors z-50 p-2 bg-black/50 rounded-full"
-                        >
-                            <X className="w-8 h-8" />
-                        </button>
-                        {isImage(previewFile.mimeType) ? (
-                            <img
-                                src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`}
-                                alt={previewFile.fileName}
-                                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl border border-brand-text/10"
+            {newFolderModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setNewFolderModalOpen(false)}>
+                    <div className="bg-brand-bg border border-brand-text/10 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-brand-text/10 flex justify-between items-center">
+                            <h3 className="font-medium text-brand-text">Create Folder</h3>
+                        </div>
+                        <form onSubmit={handleCreateFolder} className="p-4">
+                            <input
+                                type="text"
+                                placeholder="Folder Name"
+                                value={newFolderName}
+                                onChange={(e) => setNewFolderName(e.target.value)}
+                                className="w-full px-3 py-2 border border-brand-text/20 rounded-lg bg-black/20 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-primary mb-4"
+                                autoFocus
                             />
-                        ) : isVideo(previewFile.mimeType) ? (
-                            <video
-                                src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`}
-                                controls
-                                autoPlay
-                                className="max-w-full max-h-[85vh] rounded-lg shadow-2xl border border-brand-text/10"
+                            {selectedFiles.size > 0 && (
+                                <p className="text-xs text-brand-text/50 mb-4">
+                                    {selectedFiles.size} file(s) will be moved into this folder.
+                                </p>
+                            )}
+                            <div className="flex justify-end space-x-2">
+                                <button type="button" onClick={() => setNewFolderModalOpen(false)} className="px-4 py-2 text-brand-text/70 rounded-lg">Cancel</button>
+                                <button type="submit" disabled={!newFolderName.trim()} className="px-4 py-2 bg-brand-primary text-white rounded-lg disabled:opacity-50">Create</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {folderAction?.type === 'rename' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setFolderAction(null)}>
+                    <div className="bg-brand-bg border border-brand-text/10 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-brand-text/10">
+                            <h3 className="font-medium text-brand-text">Rename Folder</h3>
+                        </div>
+                        <form onSubmit={handleRenameFolder} className="p-4">
+                            <input
+                                type="text"
+                                value={newFolderName}
+                                onChange={(e) => setNewFolderName(e.target.value)}
+                                className="w-full px-3 py-2 border border-brand-text/20 rounded-lg bg-black/20 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-primary mb-4"
+                                autoFocus
                             />
-                        ) : (
-                            <div className="text-brand-text">Cannot preview this file type</div>
-                        )}
-                        <div className="mt-4 text-brand-text text-center">
-                            <h3 className="text-xl font-medium">{previewFile.fileName}</h3>
-                            <p className="text-brand-text/50 text-sm">{formatSize(previewFile.size)} • {formatExactDate(previewFile.date)}</p>
+                            <div className="flex justify-end space-x-2">
+                                <button type="button" onClick={() => setFolderAction(null)} className="px-4 py-2 text-brand-text/70 rounded-lg">Cancel</button>
+                                <button type="submit" disabled={!newFolderName.trim()} className="px-4 py-2 bg-brand-primary text-white rounded-lg disabled:opacity-50">Rename</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {folderAction?.type === 'delete' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setFolderAction(null)}>
+                    <div className="bg-brand-bg border border-brand-accent/50 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 text-center">
+                            <Trash2 className="w-12 h-12 text-brand-accent mx-auto mb-3" />
+                            <h3 className="font-medium text-lg text-brand-text mb-2">Delete Folder?</h3>
+                            <p className="text-sm text-brand-text/70">
+                                This will permanently delete the folder "{folderAction.folder?.name}" and <b>all files and subfolders</b> inside it from Telegram. This action cannot be undone.
+                            </p>
+                            <div className="mt-6 flex justify-center space-x-3">
+                                <button onClick={() => setFolderAction(null)} className="px-4 py-2 bg-black/20 text-brand-text rounded-lg hover:bg-black/40">Cancel</button>
+                                <button onClick={handleDeleteFolder} className="px-4 py-2 bg-brand-accent text-white rounded-lg hover:bg-red-600 shadow-lg shadow-brand-accent/20">Delete Forever</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="sticky top-0 z-20 bg-brand-bg/95 backdrop-blur-md p-4 -mt-2 mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-brand-text/5">
-                <div>
-                    <h1 className="text-2xl font-bold text-brand-text">My Files</h1>
-                    <p className="text-brand-text/50 text-sm">Browsing files from {selectedDrive === 'me' ? 'Saved Messages' : 'Channel'}</p>
-                </div>
-
-                <div className="flex flex-col md:flex-row gap-3">
-                    {/* Search Bar */}
-                    <div className="relative w-full md:w-64">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-brand-text/50" />
+            {folderAction?.type === 'move' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setFolderAction(null)}>
+                    <div className="bg-brand-bg border border-brand-text/10 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-brand-text/10 flex justify-between items-center">
+                            <h3 className="font-medium text-brand-text">Move {folderAction.targetFiles?.length} File(s)</h3>
+                            <button onClick={() => setFolderAction(null)}><X className="w-5 h-5" /></button>
                         </div>
-                        <input
-                            type="text"
-                            className="block w-full pl-10 pr-3 py-2 border border-brand-text/10 rounded-sm leading-5 bg-black/20 text-brand-text placeholder-brand-text/50 focus:outline-none focus:placeholder-brand-text/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
-                            placeholder="Search files..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                        <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+                            <p className="text-sm text-brand-text/70 mb-3">Select destination:</p>
+
+                            <button
+                                onClick={() => setMoveTarget('root')}
+                                className={`w-full flex items-center p-3 rounded-lg border text-left mb-2 transition-colors ${moveTarget === 'root' ? 'border-brand-primary bg-brand-primary/10 text-brand-primary' : 'border-brand-text/10 text-brand-text hover:bg-black/20'}`}
+                            >
+                                <Home className="w-5 h-5 mr-3" />
+                                <span className="font-medium">Root Directory</span>
+                            </button>
+
+                            {/* Render folders in root to move to. For simplicity, just listing root folders. Optional: recursive fetching. */}
+                            {folders.length > 0 && <div className="text-xs uppercase text-brand-text/50 my-2 font-medium">Folders Here</div>}
+                            {folders.map(f => (
+                                <button
+                                    key={f._id}
+                                    onClick={() => setMoveTarget(f._id)}
+                                    className={`w-full flex items-center p-3 rounded-lg border text-left mb-2 transition-colors ${moveTarget === f._id ? 'border-brand-primary bg-brand-primary/10 text-brand-primary' : 'border-brand-text/10 text-brand-text hover:bg-black/20'}`}
+                                >
+                                    <FolderIcon className="w-5 h-5 mr-3" />
+                                    <span className="font-medium truncate">{f.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="p-4 border-t border-brand-text/10 flex justify-end">
+                            <button disabled={!moveTarget} onClick={handleMoveFiles} className="px-4 py-2 bg-brand-primary text-white rounded-lg disabled:opacity-50">Move Here</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
+            {/* File Preview Modal */}
+            {previewFile && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+                    <div className="max-w-5xl max-h-[90vh] w-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setPreviewFile(null)} className="absolute top-4 right-4 text-white p-2 bg-black/50 rounded-full z-50"><X className="w-8 h-8" /></button>
+                        {isImage(previewFile.mimeType) ? (
+                            <img src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`} alt={previewFile.fileName} className="max-w-full max-h-[85vh] object-contain rounded-lg" />
+                        ) : isVideo(previewFile.mimeType) ? (
+                            <video src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`} controls autoPlay className="max-w-full max-h-[85vh] rounded-lg" />
+                        ) : (
+                            <div className="bg-brand-bg w-full max-w-md p-8 rounded-2xl flex flex-col items-center text-center relative">
+                                <div className="p-5 bg-black/20 rounded-full text-brand-primary mb-6"><div className="scale-150">{getFileIcon(previewFile.mimeType)}</div></div>
+                                <h3 className="text-xl font-semibold mb-1 break-all">{previewFile.fileName}</h3>
+                                <p className="text-brand-text/50 text-sm mb-6">Preview not supported</p>
+                                <button onClick={() => window.open(`/api/files/download/${previewFile.id}?driveId=${selectedDrive}`, '_blank')} className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-brand-primary text-white rounded-xl">
+                                    <Download className="w-4 h-4" /> <span>Download File</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className="sticky top-0 z-20 bg-brand-bg/95 backdrop-blur-md p-4 -mt-2 mb-6 flex flex-col gap-4 border-b border-brand-text/5">
+                <div className="flex flex-col md:flex-row md:items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold text-brand-text flex items-center flex-wrap gap-2">
+                            <span
+                                className="cursor-pointer hover:text-brand-primary transition-colors flex items-center"
+                                onClick={() => handleNavigate(null)}
+                            >
+                                <Home className="w-6 h-6 mr-2" />
+                            </span>
+                            {folderPath.map((path, idx) => (
+                                <span key={path.id} className="flex items-center text-brand-text">
+                                    <ChevronRight className="w-5 h-5 text-brand-text/30 mx-1" />
+                                    <span
+                                        className="cursor-pointer hover:text-brand-primary transition-colors text-lg"
+                                        onClick={() => handleNavigate(path.id, path.name)}
+                                    >
+                                        {path.name}
+                                    </span>
+                                </span>
+                            ))}
+                        </h1>
+                        <p className="text-brand-text/50 text-sm mt-1">Browsing {selectedDrive === 'me' ? 'Saved Messages' : 'Channel'}</p>
                     </div>
 
-                    <button
-                        onClick={handleUploadClick}
-                        disabled={uploading}
-                        className="flex items-center justify-center space-x-2 px-4 py-2 bg-brand-primary text-white rounded-sm hover:bg-brand-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-brand-primary/20"
-                    >
-                        {uploading ? (
-                            <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                                <span>{uploadProgress}%</span>
-                            </>
+                    <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
+                        {selectionMode ? (
+                            <div className="flex items-center bg-brand-primary/10 border border-brand-primary/20 rounded-lg px-3 py-1.5 animate-in fade-in">
+                                <span className="text-brand-primary font-medium mr-4 text-sm hidden sm:inline">{selectedFiles.size} selected</span>
+                                <button
+                                    onClick={() => {
+                                        if (selectedFiles.size === files.length) {
+                                            setSelectedFiles(new Set());
+                                            setSelectionMode(false);
+                                        } else {
+                                            setSelectedFiles(new Set(files.map(f => f.id)));
+                                        }
+                                    }}
+                                    className="text-sm text-brand-primary hover:bg-brand-primary/20 rounded-md px-2 py-1 transition-colors font-medium mr-2"
+                                >
+                                    {selectedFiles.size === files.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setFolderAction({ type: 'move', targetFiles: files.filter(f => selectedFiles.has(f.id)) });
+                                        setMoveTarget(null);
+                                    }}
+                                    className="p-1.5 text-brand-primary hover:bg-brand-primary/20 rounded-md mr-1 tooltip" title="Move Selected"
+                                >
+                                    <ArrowRightLeft className="w-4 h-4" />
+                                </button>
+                                <button onClick={handleDeleteSelected} className="p-1.5 text-brand-accent hover:bg-brand-accent/20 rounded-md mr-1"><Trash2 className="w-4 h-4" /></button>
+                                <button onClick={() => { setSelectionMode(false); setSelectedFiles(new Set()); }} className="p-1.5 text-brand-text/50 hover:bg-black/20 rounded-md"><X className="w-4 h-4" /></button>
+                            </div>
                         ) : (
-                            <>
-                                <Download className="w-4 h-4 rotate-180" /> {/* Upload icon (rotated download) */}
-                                <span className="font-medium">Upload</span>
-                            </>
+                            <div className="relative w-full md:w-64">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="h-5 w-5 text-brand-text/50" /></div>
+                                <input type="text" className="block w-full pl-10 pr-3 py-2 border border-brand-text/10 rounded-sm bg-black/20 text-brand-text placeholder-brand-text/50 focus:outline-none focus:ring-1 focus:ring-brand-primary sm:text-sm" placeholder="Search files..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                            </div>
                         )}
-                    </button>
+
+                        <button onClick={() => { setNewFolderName(''); setNewFolderModalOpen(true); }} className="flex items-center space-x-2 px-3 py-2 bg-black/20 text-brand-text border border-brand-text/10 rounded-sm hover:bg-black/40 transition-colors">
+                            <FolderPlus className="w-4 h-4" /> <span className="font-medium text-sm">New Folder</span>
+                        </button>
+
+                        <button onClick={handleUploadClick} disabled={uploading} className="flex items-center space-x-2 px-4 py-2 bg-brand-primary text-white rounded-sm hover:bg-brand-primary/80 transition-colors shadow-lg shadow-brand-primary/20">
+                            {uploading ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Download className="w-4 h-4 rotate-180" />}
+                            <span className="font-medium text-sm">Upload</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Upload Progress Bar */}
             {uploading && (
-                <div className="mb-4">
-                    <div className="w-full bg-black/20 rounded-full h-2.5">
-                        <div className="bg-brand-primary h-2.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
-                    </div>
-                    <p className="text-xs text-right text-brand-text/50 mt-1">Uploading... {uploadProgress}%</p>
+                <div className="mb-4 mx-4">
+                    <div className="w-full bg-black/20 rounded-full h-2.5"><div className="bg-brand-primary h-2.5 rounded-full transition-all" style={{ width: `${uploadProgress}%` }}></div></div>
                 </div>
             )}
 
-            {files.length === 0 && !loading ? (
+            {files.length === 0 && folders.length === 0 && !loading ? (
                 <div className="flex flex-col items-center justify-center h-64 text-brand-text/30">
                     <Database className="w-12 h-12 mb-4 opacity-50" />
-                    <p>{searchQuery ? 'No files match your search' : 'No files found in this drive'}</p>
+                    <p>{searchQuery ? 'No results' : 'This folder is empty'}</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 p-4 py-0 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1 pb-4">
-                    {files.map((file, index) => {
-                        const isLastElement = files.length === index + 1;
-                        return (
-                            <div
-                                ref={isLastElement ? lastFileElementRef : null}
-                                key={`${file.id}-${index}`}
-                                onClick={() => handleCardClick(file)}
-                                className={`bg-black/20 backdrop-blur-sm hover:shadow-lg hover:bg-brand-primary/2 transition-all group flex flex-col h-full ${isImage(file.mimeType) || isVideo(file.mimeType) ? 'cursor-pointer' : ''} relative`}
-                            >
-                                <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <DropdownMenu.Root>
-                                        <DropdownMenu.Trigger asChild>
-                                            <button
-                                                className="p-1.5 bg-brand-bg/90 hover:bg-brand-bg text-brand-text hover:text-brand-primary rounded-md shadow-sm backdrop-blur-sm transition-colors focus:outline-none border border-brand-text/10"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <MoreVertical className="w-4 h-4" />
-                                            </button>
-                                        </DropdownMenu.Trigger>
-
-                                        <DropdownMenu.Portal>
-                                            <DropdownMenu.Content
-                                                className="min-w-[160px] bg-brand-bg rounded-lg shadow-xl border border-brand-text/10 p-1 z-50 animate-in fade-in zoom-in-95 duration-100"
-                                                sideOffset={5}
-                                                align="end"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                {(isImage(file.mimeType) || isVideo(file.mimeType)) && (
-                                                    <DropdownMenu.Item
-                                                        className="flex items-center px-2 py-2 text-sm text-brand-text/90 hover:bg-brand-text/5 hover:text-brand-primary rounded-md cursor-pointer outline-none"
-                                                        onClick={() => setPreviewFile(file)}
-                                                    >
-                                                        <Eye className="w-4 h-4 mr-2" />
-                                                        View
-                                                    </DropdownMenu.Item>
-                                                )}
-
-                                                <DropdownMenu.Item
-                                                    className="flex items-center px-2 py-2 text-sm text-brand-text/90 hover:bg-brand-text/5 hover:text-brand-primary rounded-md cursor-pointer outline-none"
-                                                    onClick={() => window.open(`/api/files/download/${file.id}?driveId=${selectedDrive}`, '_blank')}
-                                                >
-                                                    <Download className="w-4 h-4 mr-2" />
-                                                    Download
-                                                </DropdownMenu.Item>
-
-                                                <DropdownMenu.Item
-                                                    className="flex items-center px-2 py-2 text-sm text-brand-text/90 hover:bg-brand-text/5 hover:text-brand-primary rounded-md cursor-pointer outline-none"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleRenameClick(file);
-                                                    }}
-                                                >
-                                                    <Edit className="w-4 h-4 mr-2" />
-                                                    Rename
-                                                </DropdownMenu.Item>
-
-                                                <DropdownMenu.Separator className="h-px bg-brand-text/10 my-1" />
-
-                                                <DropdownMenu.Item
-                                                    className="flex items-center px-2 py-2 text-sm text-brand-accent hover:bg-brand-accent/10 rounded-md cursor-pointer outline-none"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDelete(file);
-                                                    }}
-                                                >
-                                                    <Trash2 className="w-4 h-4 mr-2" />
-                                                    Delete
-                                                </DropdownMenu.Item>
-                                            </DropdownMenu.Content>
-                                        </DropdownMenu.Portal>
-                                    </DropdownMenu.Root>
-                                </div>
-
-                                <div className="relative flex-grow flex items-center justify-center bg-black/20 overflow-hidden min-h-[250px]">
-                                    {/* Thumbnail Logic */}
-                                    {file.hasThumbnail ? (
-                                        <img
-                                            src={`/api/files/thumbnail/${file.id}?driveId=${selectedDrive}`}
-                                            alt={file.fileName}
-                                            className="w-full bg-black/20 h-full object-contain absolute inset-0"
-                                            onError={(e) => {
-                                                (e.target as HTMLImageElement).style.display = 'none';
-                                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                                            }}
-                                        />
-                                    ) : null}
-                                    <div className={`${file.hasThumbnail ? 'hidden' : ''} p-4 text-brand-primary`}>
-                                        {getFileIcon(file.mimeType)}
+                <div className="px-4 pb-8">
+                    {/* Folders Grid */}
+                    {folders.length > 0 && (
+                        <>
+                            <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-text/50 mb-3 ml-1">Folders</h2>
+                            <div className="grid grid-cols-2 p-2 py-0 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 mb-8">
+                                {folders.map((folder) => (
+                                    <div
+                                        key={folder._id}
+                                        onClick={() => handleNavigate(folder._id, folder.name)}
+                                        className="bg-black/20 backdrop-blur-sm hover:bg-black/40 border border-brand-text/5 hover:border-brand-primary/30 transition-all rounded-xl p-3 flex items-center cursor-pointer group relative shadow-sm"
+                                    >
+                                        <div className="absolute top-2 right-2 opacity-100 md:opacity-0 group-hover:opacity-100 z-10 transition-opacity">
+                                            <DropdownMenu.Root>
+                                                <DropdownMenu.Trigger asChild>
+                                                    <button className="p-1 bg-brand-bg/90 hover:bg-brand-text/10 rounded-md" onClick={(e) => e.stopPropagation()}><MoreVertical className="w-4 h-4 text-brand-text" /></button>
+                                                </DropdownMenu.Trigger>
+                                                <DropdownMenu.Portal>
+                                                    <DropdownMenu.Content className="min-w-[140px] bg-brand-bg rounded-lg shadow-xl border border-brand-text/10 p-1 z-50">
+                                                        <DropdownMenu.Item onClick={() => handleNavigate(folder._id, folder.name)} className="flex items-center px-2 py-2 text-sm text-brand-text/90 hover:bg-brand-text/5 outline-none rounded-md cursor-pointer"><Eye className="w-4 h-4 mr-2" /> Open</DropdownMenu.Item>
+                                                        <DropdownMenu.Item onClick={(e) => { e.stopPropagation(); setNewFolderName(folder.name); setFolderAction({ type: 'rename', folder }); }} className="flex items-center px-2 py-2 text-sm text-brand-text/90 hover:bg-brand-text/5 outline-none rounded-md cursor-pointer"><Edit className="w-4 h-4 mr-2" /> Rename</DropdownMenu.Item>
+                                                        <DropdownMenu.Separator className="h-px bg-brand-text/10 my-1" />
+                                                        <DropdownMenu.Item onClick={(e) => { e.stopPropagation(); setFolderAction({ type: 'delete', folder }); }} className="flex items-center px-2 py-2 text-sm text-brand-accent hover:bg-brand-accent/10 outline-none rounded-md cursor-pointer"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenu.Item>
+                                                    </DropdownMenu.Content>
+                                                </DropdownMenu.Portal>
+                                            </DropdownMenu.Root>
+                                        </div>
+                                        <FolderIcon className="w-8 h-8 text-brand-primary opacity-80 mr-3 flex-shrink-0" />
+                                        <span className="font-medium text-brand-text truncate text-sm flex-1 select-none pointer-events-none" title={folder.name}>{folder.name}</span>
                                     </div>
-                                </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
 
-                                <div className="py-1 px-2">
-                                    <div className="flex items-start justify-between mb-1">
-                                        <h3 className="font-medium text-center text-brand-text truncate flex-1" title={file.fileName}>{file.fileName}</h3>
-                                    </div>
+                    {/* Files Grid */}
+                    {files.length > 0 && (
+                        <>
+                            <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-text/50 mb-3 ml-1">Files</h2>
+                            <div className="grid grid-cols-2 p-1 py-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 border border-transparent">
+                                {files.map((file, index) => {
+                                    const isLast = files.length === index + 1;
+                                    const isSelected = selectedFiles.has(file.id);
 
-                                    <div className="flex items-center justify-center gap-1 text-xs text-brand-text/50">
-                                        <span>{formatSize(file.size)}</span>
-                                        <Dot className="w-3 h-3" />
-                                        <div className="flex text-center items-center group/date relative cursor-help">
-                                            <Clock className="w-3 h-3 mr-1" />
-                                            <span>{formatRelativeTime(file.date)}</span>
-                                            {/* Tooltip logic remains */}
-                                            <div className="absolute bottom-full right-0 mb-2 hidden group-hover/date:block z-10 whitespace-nowrap">
-                                                <div className="bg-brand-bg text-brand-text text-xs py-1 px-2 rounded shadow-lg border border-brand-text/10">
-                                                    {formatExactDate(file.date)}
+                                    return (
+                                        <div
+                                            ref={isLast ? lastFileElementRef : null}
+                                            key={`${file.id}-${index}`}
+                                            onClick={() => handleCardClick(file)}
+                                            onContextMenu={(e) => { e.preventDefault(); toggleSelectionMode(file); }}
+                                            className={`bg-black/20 backdrop-blur-sm transition-all group flex flex-col h-full cursor-pointer relative overflow-hidden rounded-md border ${isSelected ? 'border-brand-primary' : 'border-brand-text/5 hover:border-brand-primary/50'}`}
+                                        >
+                                            <div className={`absolute top-2 left-2 z-10 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-100 md:opacity-0 group-hover:opacity-100'}`} onClick={e => e.stopPropagation()}>
+                                                <button onClick={(e) => { e.stopPropagation(); toggleSelectionMode(file); }} className={`p-1 rounded-sm backdrop-blur-sm transition-colors ${isSelected ? 'bg-brand-primary text-white' : 'bg-black/40 hover:bg-brand-primary text-white'}`}>
+                                                    {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                                </button>
+                                            </div>
+
+                                            <div className="absolute top-2 right-2 z-10 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <DropdownMenu.Root>
+                                                    <DropdownMenu.Trigger asChild>
+                                                        <button className="p-1.5 bg-brand-bg/90 hover:bg-brand-bg text-brand-text hover:text-brand-primary rounded-md shadow-sm border border-brand-text/10" onClick={(e) => e.stopPropagation()}>
+                                                            <MoreVertical className="w-4 h-4" />
+                                                        </button>
+                                                    </DropdownMenu.Trigger>
+                                                    <DropdownMenu.Portal>
+                                                        <DropdownMenu.Content className="min-w-[160px] bg-brand-bg rounded-lg shadow-xl border border-brand-text/10 p-1 z-50">
+                                                            <DropdownMenu.Item onClick={() => setPreviewFile(file)} className="flex items-center px-2 py-2 text-sm hover:bg-brand-text/5 cursor-pointer outline-none"><Eye className="w-4 h-4 mr-2" /> View</DropdownMenu.Item>
+                                                            <DropdownMenu.Item onClick={() => window.open(`/api/files/download/${file.id}?driveId=${selectedDrive}`, '_blank')} className="flex items-center px-2 py-2 text-sm hover:bg-brand-text/5 cursor-pointer outline-none"><Download className="w-4 h-4 mr-2" /> Download</DropdownMenu.Item>
+                                                            <DropdownMenu.Item onClick={(e) => { e.stopPropagation(); setFolderAction({ type: 'move', targetFiles: [file] }); setMoveTarget(null); }} className="flex items-center px-2 py-2 text-sm hover:bg-brand-text/5 cursor-pointer outline-none"><ArrowRightLeft className="w-4 h-4 mr-2" /> Move To...</DropdownMenu.Item>
+                                                            <DropdownMenu.Item onClick={(e) => { e.stopPropagation(); handleRenameClick(file); }} className="flex items-center px-2 py-2 text-sm hover:bg-brand-text/5 cursor-pointer outline-none"><Edit className="w-4 h-4 mr-2" /> Rename</DropdownMenu.Item>
+                                                            <DropdownMenu.Separator className="h-px bg-brand-text/10 my-1" />
+                                                            <DropdownMenu.Item onClick={(e) => { e.stopPropagation(); handleDelete(file); }} className="flex items-center px-2 py-2 text-sm text-brand-accent hover:bg-brand-accent/10 cursor-pointer outline-none"><Trash2 className="w-4 h-4 mr-2" /> Delete</DropdownMenu.Item>
+                                                        </DropdownMenu.Content>
+                                                    </DropdownMenu.Portal>
+                                                </DropdownMenu.Root>
+                                            </div>
+
+                                            <div className="relative flex-grow flex items-center justify-center bg-black/20 min-h-[160px]">
+                                                {file.hasThumbnail ? (
+                                                    <img src={`/api/files/thumbnail/${file.id}?driveId=${selectedDrive}`} alt={file.fileName} className="w-full bg-black/20 h-full object-cover absolute inset-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                                ) : <div className="p-4 text-brand-primary opacity-50">{getFileIcon(file.mimeType)}</div>}
+                                            </div>
+
+                                            <div className="py-2 px-2 border-t border-brand-text/5">
+                                                <h3 className="font-medium text-brand-text truncate text-sm px-1 mb-1" title={file.fileName}>{file.fileName}</h3>
+                                                <div className="flex items-center justify-between px-1 text-xs text-brand-text/50">
+                                                    <span>{formatSize(file.size)}</span>
+                                                    <span>{formatExactDate(file.date)}</span>
                                                 </div>
-                                                <div className="w-2 h-2 bg-brand-bg border-r border-b border-brand-text/10 rotate-45 absolute bottom-[-4px] right-2"></div>
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
+                                    )
+                                })}
                             </div>
-                        )
-                    })}
-                    {loading && (
-                        <div className="col-span-full flex justify-center py-4">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary bg-transparent"></div>
-                        </div>
+                        </>
                     )}
+                    {loading && <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div></div>}
                 </div>
             )}
         </Layout>
