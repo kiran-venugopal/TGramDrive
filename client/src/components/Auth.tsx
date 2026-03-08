@@ -50,7 +50,8 @@ export const Auth = () => {
                 setPhoneCodeHash(res.phoneCodeHash);
             }
             setStep('CODE');
-        } catch (err: any) {
+        } catch (error) {
+            const err = error as { response?: { data?: { message?: string } } };
             setError(err.response?.data?.message || 'Failed to send code');
         } finally {
             setLoading(false);
@@ -65,7 +66,8 @@ export const Auth = () => {
             // Phone is already stored from previous step
             const cleanPhone = phone.replace(/\s/g, '');
             await signIn(cleanPhone, code, password, phoneCodeHash);
-        } catch (err: any) {
+        } catch (error) {
+            const err = error as { response?: { data?: { error?: string; message?: string } } };
             if (err.response?.data?.error === 'SESSION_PASSWORD_NEEDED') {
                 setStep('PASSWORD');
             } else {

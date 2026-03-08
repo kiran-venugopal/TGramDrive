@@ -45,7 +45,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
 
         setLoading(true);
         try {
-            const params: any = { limit: 20 };
+            const params: Record<string, string | number> = { limit: 20 };
             if (!isInitial) {
                 if (offsetDate) params.offsetDate = offsetDate;
                 if (offsetId) params.offsetId = offsetId;
@@ -105,6 +105,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
         }, 500);
 
         return () => clearTimeout(timeout);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchQuery]); // fetchDrives excluded to avoid loop
 
     return (

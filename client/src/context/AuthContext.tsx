@@ -12,8 +12,8 @@ interface AuthContextType {
     user: User | null;
     isAuthenticated: boolean;
     loading: boolean;
-    sendCode: (phone: string) => Promise<any>;
-    signIn: (phone: string, code: string, password?: string, phoneCodeHash?: string) => Promise<any>;
+    sendCode: (phone: string) => Promise<Record<string, unknown>>;
+    signIn: (phone: string, code: string, password?: string, phoneCodeHash?: string) => Promise<Record<string, unknown>>;
     logout: () => void;
 }
 
@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             if (res.data.user) {
                 setUser(res.data.user);
             }
-        } catch (error) {
+        } catch {
             // Not logged in
             setUser(null);
         } finally {
@@ -79,6 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (context === undefined) {
