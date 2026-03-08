@@ -47,7 +47,7 @@ export const Auth = () => {
             const cleanPhone = phone.replace(/\s/g, '');
             const res = await sendCode(cleanPhone);
             if (res.phoneCodeHash) {
-                setPhoneCodeHash(res.phoneCodeHash);
+                setPhoneCodeHash(res.phoneCodeHash as string);
             }
             setStep('CODE');
         } catch (error) {
