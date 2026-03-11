@@ -1,5 +1,5 @@
 import type { FileItem, FolderItem } from '../../types';
-import { X, Trash2, Home, Folder as FolderIcon, Download, FileImage, FileVideo, FileAudio, FileText, FileArchive, FileIcon } from 'lucide-react';
+import { X, Trash2, Home, Folder as FolderIcon, Download, FileImage, FileVideo, FileAudio, FileText, FileArchive, FileIcon, UploadCloud } from 'lucide-react';
 import type { FolderActionType } from '../../hooks/useFolderActions';
 
 interface DashboardModalsProps {
@@ -29,6 +29,10 @@ interface DashboardModalsProps {
     previewFile: FileItem | null;
     setPreviewFile: (file: FileItem | null) => void;
     selectedDrive: string;
+
+    sharedFilesPending?: File[];
+    setSharedFilesPending?: (files: File[]) => void;
+    onConfirmSharedUpload?: () => void;
 }
 
 const isImage = (mimeType: string) => mimeType ? mimeType.startsWith('image/') : false;
@@ -79,10 +83,31 @@ export const DashboardModals = ({
     handleMoveFiles,
     previewFile,
     setPreviewFile,
-    selectedDrive
+    selectedDrive,
+    sharedFilesPending = [],
+    setSharedFilesPending,
+    onConfirmSharedUpload
 }: DashboardModalsProps) => {
     return (
         <>
+            {sharedFilesPending.length > 0 && setSharedFilesPending && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setSharedFilesPending([])}>
+                    <div className="bg-brand-bg border border-brand-text/10 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 text-center">
+                            <UploadCloud className="w-12 h-12 text-brand-primary mx-auto mb-3" />
+                            <h3 className="font-medium text-lg text-brand-text mb-2">Upload Shared Files?</h3>
+                            <p className="text-sm text-brand-text/70 mb-4">
+                                You are about to upload {sharedFilesPending.length} file(s) shared from another app to your <b>Saved Messages</b>.
+                            </p>
+                            <div className="flex justify-center space-x-3 mt-6">
+                                <button onClick={() => setSharedFilesPending([])} className="px-4 py-2 bg-black/20 text-brand-text rounded-lg hover:bg-black/40">Cancel</button>
+                                <button onClick={onConfirmSharedUpload} className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 shadow-lg shadow-brand-primary/20">Upload Now</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {renamingFile && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setRenamingFile(null)}>
                     <div className="bg-brand-bg border border-brand-text/10 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>

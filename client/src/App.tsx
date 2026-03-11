@@ -2,9 +2,16 @@ import { useAuth } from './context/AuthContext';
 import { Auth } from './components/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Loader2 } from 'lucide-react';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { OfflineScreen } from './components/OfflineScreen';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
+  const isOnline = useOnlineStatus();
+
+  if (!isOnline) {
+    return <OfflineScreen />;
+  }
 
   if (loading) {
     return (

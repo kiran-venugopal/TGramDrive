@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { get, del } from 'idb-keyval';
 import { Layout } from '../components/Layout';
 import { Database, UploadCloud, CheckCircle2, Loader2 } from 'lucide-react';
 import type { FileItem } from '../types';
@@ -19,6 +20,7 @@ export const Dashboard = () => {
     const [selectedDrive, setSelectedDrive] = useState('me');
     const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [sharedFilesPending, setSharedFilesPending] = useState<File[]>([]);
 
     // 1. File System State (Fetching & Navigation)
     const {
@@ -108,12 +110,33 @@ export const Dashboard = () => {
                 setNewFolderModalOpen(false);
                 setFolderAction(null);
                 clearSelection();
+                setSharedFilesPending([]);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [clearSelection, setRenamingFile, setNewFolderModalOpen, setFolderAction]);
+
+    // Handle Share Target SDK
+    useEffect(() => {
+        const checkSharedFiles = async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('shared-target') === 'true') {
+                try {
+                    const files = await get('tg-drive-shared-files');
+                    if (files && files.length > 0) {
+                        setSharedFilesPending(files);
+                    }
+                    await del('tg-drive-shared-files');
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                } catch (error) {
+                    console.error('Error fetching shared files:', error);
+                }
+            }
+        };
+        checkSharedFiles();
+    }, []);
 
     // Render Handlers
     const handleCardClick = (file: FileItem) => {
@@ -208,6 +231,21 @@ export const Dashboard = () => {
                     previewFile={previewFile}
                     setPreviewFile={setPreviewFile}
                     selectedDrive={selectedDrive}
+
+                    sharedFilesPending={sharedFilesPending}
+                    setSharedFilesPending={setSharedFilesPending}
+                    onConfirmSharedUpload={async () => {
+                        const fakeEvent = {
+                            target: { files: sharedFilesPending }
+                        } as unknown as React.ChangeEvent<HTMLInputElement>;
+                        setSelectedDrive('me');
+
+                        // Wait for next tick so selectedDrive is updated in useFileActions
+                        setTimeout(async () => {
+                            await handleFileChange(fakeEvent);
+                            setSharedFilesPending([]);
+                        }, 0);
+                    }}
                 />
 
                 <DashboardToolbar
