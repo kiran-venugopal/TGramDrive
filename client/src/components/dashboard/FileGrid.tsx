@@ -34,7 +34,7 @@ export const FileGrid = ({
     return (
         <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-text/50 mb-3 ml-1">Files</h2>
-            <div className="grid grid-cols-2 p-1 py-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 border border-transparent">
+            <div className="grid grid-cols-2 p-1 py-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 border border-transparent">
                 {files.map((file, index) => {
                     const isLast = files.length === index + 1;
                     const isSelected = selectedFiles.has(file.id);

@@ -1,6 +1,8 @@
 import type { FolderPathItem, FileItem } from '../../types';
 import { Home, ChevronRight, ArrowRightLeft, Trash2, X, Search, FolderPlus, Download } from 'lucide-react';
 import type { FolderActionType } from '../../hooks/useFolderActions';
+import { useCurrentDrive } from '../Layout';
+import { BreadcrumbAvatar } from '../DriveBreadcrumb';
 
 interface DashboardToolbarProps {
     selectedDrive: string;
@@ -39,11 +41,13 @@ export const DashboardToolbar = ({
     onUploadClick,
     uploading
 }: DashboardToolbarProps) => {
+    const { currentDrive } = useCurrentDrive();
+
     return (
         <div className="sticky top-0 z-20 bg-brand-bg/95 backdrop-blur-md p-4 -mt-2 mb-6 flex flex-col gap-4 border-b border-brand-text/5">
-            <div className="flex flex-col md:flex-row md:items-center justify-between">
+            <div className="flex flex-col gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-brand-text flex items-center flex-wrap gap-2">
+                    <h1 className="text-base font-bold text-brand-text flex items-center gap-2 flex-wrap min-w-0">
                         <span
                             className="cursor-pointer hover:text-brand-primary transition-colors flex items-center"
                             onClick={() => onNavigate(null)}
@@ -52,20 +56,30 @@ export const DashboardToolbar = ({
                         </span>
                         {folderPath.map((path) => (
                             <span key={path.id} className="flex items-center text-brand-text">
-                                <ChevronRight className="w-5 h-5 text-brand-text/30 mx-1" />
+                                <ChevronRight className="w-6 h-6 text-brand-text/30 mx-1" />
                                 <span
-                                    className="cursor-pointer hover:text-brand-primary transition-colors text-lg"
+                                    className="cursor-pointer hover:text-brand-primary transition-colors text-base font-medium"
                                     onClick={() => onNavigate(path.id, path.name)}
                                 >
                                     {path.name}
                                 </span>
                             </span>
                         ))}
+                        {currentDrive && (
+                            <span className="flex items-center text-brand-text ml-1 gap-2 text-lg">
+                                <ChevronRight className="w-6 h-6 text-brand-text/30" />
+                                <span className="flex items-center gap-2">
+                                    <BreadcrumbAvatar drive={currentDrive} />
+                                    <span className="font-medium truncate max-w-[180px] sm:max-w-xs text-base">
+                                        {currentDrive.name}
+                                    </span>
+                                </span>
+                            </span>
+                        )}
                     </h1>
-                    <p className="text-brand-text/50 text-sm mt-1">Browsing {selectedDrive === 'me' ? 'Saved Messages' : 'Channel'}</p>
                 </div>
 
-                <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
+                <div className="flex flex-wrap gap-3 mt-2">
                     {selectionMode ? (
                         <div className="flex items-center bg-brand-primary/10 border border-brand-primary/20 rounded-lg px-3 py-1.5 animate-in fade-in">
                             <span className="text-brand-primary font-medium mr-4 text-sm hidden sm:inline">{selectedFiles.size} selected</span>

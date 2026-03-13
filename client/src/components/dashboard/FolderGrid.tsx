@@ -15,7 +15,7 @@ export const FolderGrid = ({ folders, onNavigate, onSetAction, onSetNewFolderNam
     return (
         <div className="mb-8">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-brand-text/50 mb-3 ml-1">Folders</h2>
-            <div className="grid grid-cols-2 p-2 py-0 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 p-2 py-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
                 {folders.map((folder) => (
                     <FolderCard
                         key={folder._id}

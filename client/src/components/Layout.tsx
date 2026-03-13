@@ -1,15 +1,77 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, HardDrive, MessageSquare, Menu, Search, Loader2, Star } from 'lucide-react';
+import { LogOut, HardDrive, Hash, Users, User, Bot, Menu, X, Search, Loader2, Star } from 'lucide-react';
 
 import api from '../api';
 import Logo from '../assets/logo.svg';
 
-interface Drive {
+export interface Drive {
     id: string;
     name: string;
-    type: 'saved' | 'channel' | 'group';
+    type: 'saved' | 'channel' | 'group' | 'user' | 'bot';
 }
+
+interface DriveContextValue {
+    currentDrive?: Drive;
+}
+
+export const DriveContext = React.createContext<DriveContextValue | undefined>(undefined);
+
+export const useCurrentDrive = () => {
+    const ctx = React.useContext(DriveContext);
+    if (!ctx) {
+        return { currentDrive: undefined };
+    }
+    return ctx;
+};
+
+const DriveIcon = ({ type, className = 'w-4 h-4' }: { type: Drive['type']; className?: string }) => {
+    switch (type) {
+        case 'saved': return <HardDrive className={className} />;
+        case 'channel': return <Hash className={className} />;
+        case 'group': return <Users className={className} />;
+        case 'user': return <User className={className} />;
+        case 'bot': return <Bot className={className} />;
+    }
+};
+
+// Track IDs whose avatar failed to load so we don't retry on every render
+const avatarFailedSet = new Set<string>();
+
+const DriveAvatar = ({ drive, isSelected }: { drive: Drive; isSelected: boolean }) => {
+    const [imgFailed, setImgFailed] = useState(() => avatarFailedSet.has(drive.id));
+
+    // Skip image attempt for Saved Messages — it never has a photo
+    const skipImage = drive.type === 'saved' || imgFailed;
+
+    // Icon-only fallback container
+    const iconContainer = (
+        <div className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center ${isSelected ? 'bg-brand-primary/10 text-brand-primary' : 'bg-brand-text/8 text-brand-text/50'
+            }`}>
+            <DriveIcon type={drive.type} />
+        </div>
+    );
+
+    if (skipImage) return iconContainer;
+
+    const avatarUrl = `${api.defaults.baseURL}/files/avatar/${drive.id}`;
+
+    return (
+        <div className="flex-shrink-0 w-7 h-7 rounded-full overflow-hidden">
+            <img
+                src={avatarUrl}
+                alt=""
+                className="w-full h-full object-cover"
+                onError={() => {
+                    avatarFailedSet.add(drive.id);
+                    setImgFailed(true);
+                }}
+            />
+        </div>
+    );
+};
+
+
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -123,17 +185,19 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
     return (
         <div className="flex h-screen bg-brand-bg overflow-hidden text-brand-text">
             {/* Sidebar */}
-            <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-brand-bg border-r border-brand-text/10 transform transition-transform duration-200 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
+            <div className={`fixed inset-y-0 left-0 z-50 w-64 md:w-[350px] bg-brand-bg border-r border-brand-text/10 transform transition-transform duration-200 ease-in-out ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
                 <div className="flex items-center justify-between p-4 border-b border-brand-text/10 flex-shrink-0">
                     <div className="flex items-center space-x-2">
                         <img src={Logo} alt="TGramDrive Logo" className="w-8 h-8 rounded-lg" />
                         <span className="text-xl font-bold text-brand-text">TGramDrive</span>
 
                     </div>
-                    <button onClick={() => setMobileMenuOpen(false)} className="md:hidden">
-                        <Menu className="w-6 h-6 text-brand-text/70" />
+                    <button onClick={() => setMobileMenuOpen(false)} className="md:hidden p-1.5 rounded-md hover:bg-brand-text/10 transition-colors">
+                        <X className="w-5 h-5 text-brand-text/70" />
                     </button>
                 </div>
+
+
 
                 {/* Search Bar */}
                 <div className="p-3 border-b border-brand-text/5 flex-shrink-0">
@@ -144,7 +208,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                         <input
                             type="text"
                             className="block w-full pl-9 pr-3 py-1.5 border border-brand-text/10 rounded-sm leading-5 bg-black/20 text-brand-text placeholder-brand-text/30 focus:outline-none focus:bg-black/30 focus:ring-1 focus:ring-brand-primary focus:border-brand-primary sm:text-xs"
-                            placeholder="Search channels..."
+                            placeholder="Search chats..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -152,38 +216,42 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                 </div>
 
                 <div className="p-2 space-y-1 overflow-y-auto flex-1 custom-scrollbar">
-                    <h3 className="text-xs font-semibold text-brand-text/50 uppercase tracking-wider mb-2 px-2 mt-2">Drives</h3>
+                    <h3 className="text-xs font-semibold text-brand-text/50 uppercase tracking-wider mb-2 px-2 mt-2">Chats</h3>
 
-                    {sortedDrives.map((drive) => (
-                        <div
-                            key={drive.id}
-                            onClick={() => {
-                                onDriveSelect(drive.id);
-                                setMobileMenuOpen(false);
-                            }}
-                            className={`w-full group flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${selectedDriveId === drive.id ? 'bg-brand-primary/5 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'}`}
-                        >
-                            <div className="flex items-center space-x-3 overflow-hidden">
-                                <div className="flex-shrink-0">
-                                    {drive.type === 'saved' ? <HardDrive className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
+                    {sortedDrives.map((drive) => {
+
+                        const isSelected = selectedDriveId === drive.id;
+                        return (
+                            <div
+                                key={drive.id}
+                                onClick={() => {
+                                    onDriveSelect(drive.id);
+                                    setMobileMenuOpen(false);
+                                }}
+                                className={`w-full group flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${isSelected ? 'bg-brand-primary/5 text-brand-primary font-medium' : 'text-brand-text/70 hover:bg-brand-text/5'
+                                    }`}
+                            >
+                                <div className="flex items-center space-x-2.5 overflow-hidden min-w-0">
+                                    <DriveAvatar drive={drive} isSelected={isSelected} />
+                                    <span className="truncate text-sm text-left">{drive.name}</span>
                                 </div>
-                                <span className="truncate text-sm text-left">{drive.name}</span>
+                                {drive.id !== 'me' && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (toggleStarDrive) {
+                                                toggleStarDrive(drive.id);
+                                            }
+                                        }}
+                                        className={`flex-shrink-0 p-1 rounded-md transition-opacity md:opacity-0 group-hover:opacity-100 opacity-100 ${user?.starredDrives?.includes(drive.id) ? 'text-yellow-500 md:opacity-100' : 'text-brand-text/30 hover:text-yellow-500 hover:bg-black/20'
+                                            }`}
+                                    >
+                                        <Star className={`w-4 h-4 ${user?.starredDrives?.includes(drive.id) ? 'fill-current' : ''}`} />
+                                    </button>
+                                )}
                             </div>
-                            {drive.id !== 'me' && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (toggleStarDrive) {
-                                            toggleStarDrive(drive.id);
-                                        }
-                                    }}
-                                    className={`flex-shrink-0 p-1 rounded-md transition-opacity md:opacity-0 group-hover:opacity-100 opacity-100 ${user?.starredDrives?.includes(drive.id) ? 'text-yellow-500 md:opacity-100' : 'text-brand-text/30 hover:text-yellow-500 hover:bg-black/20'}`}
-                                >
-                                    <Star className={`w-4 h-4 ${user?.starredDrives?.includes(drive.id) ? 'fill-current' : ''}`} />
-                                </button>
-                            )}
-                        </div>
-                    ))}
+                        );
+                    })}
 
                     {/* Sentinel Element */}
                     <div ref={sentinelRef} className="h-4 w-full flex items-center justify-center">
@@ -192,7 +260,7 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
 
                     {!loading && drives.length === 0 && (
                         <div className="text-center py-4 text-brand-text/30 text-xs">
-                            No channels found
+                            No chats found
                         </div>
                     )}
                 </div>
@@ -224,9 +292,11 @@ export const Layout = ({ children, onDriveSelect, selectedDriveId }: LayoutProps
                     </button>
                 </div>
 
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-bg custom-scrollbar">
-                    {children}
-                </main>
+                <DriveContext.Provider value={{ currentDrive: drives.find(d => d.id === selectedDriveId) }}>
+                    <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-bg custom-scrollbar">
+                        {children}
+                    </main>
+                </DriveContext.Provider>
             </div>
         </div>
     );

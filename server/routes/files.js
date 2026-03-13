@@ -69,11 +69,17 @@ router.get('/drives', async (req, res) => {
                                 // To match getDialogs peer IDs for deduplication, we must prepend -100 for channels/megagroups
                                 // because getDialogs returns the prefixed peer ID, but getEntity returns the raw ID.
                                 let entityIdStr = entity.id.toString();
-                                const isChannelOrGroup = entity.className === 'Channel' || entity.className === 'Chat';
-                                const type = entity.className === 'Channel' && (entity.broadcast || entity.megagroup) ? 'channel' : 'group';
+                                let type;
+                                if (entity.className === 'User') {
+                                    type = entity.bot ? 'bot' : 'user';
+                                } else if (entity.className === 'Channel') {
+                                    type = entity.broadcast ? 'channel' : 'group';
+                                } else {
+                                    type = 'group';
+                                }
 
+                                const isChannelOrGroup = entity.className === 'Channel' || entity.className === 'Chat';
                                 if (isChannelOrGroup && !entityIdStr.startsWith('-100') && !entityIdStr.startsWith('-')) {
-                                    // Telethon/GramJS commonly uses -100 for channels/megagroups
                                     if (entity.className === 'Channel') {
                                         entityIdStr = `-100${entityIdStr}`;
                                     } else if (entity.className === 'Chat') {
@@ -81,10 +87,14 @@ router.get('/drives', async (req, res) => {
                                     }
                                 }
 
+                                const name = entity.title ||
+                                    [entity.firstName, entity.lastName].filter(Boolean).join(' ') ||
+                                    entity.username || 'Unknown';
+
                                 drives.push({
                                     id: entityIdStr,
-                                    name: entity.title || entity.firstName || entity.username || 'Unknown',
-                                    type: type
+                                    name,
+                                    type
                                 });
                             }
                         } catch (err) {
@@ -98,15 +108,27 @@ router.get('/drives', async (req, res) => {
         }
 
         if (search) {
-            // Search channels/chats
+            // Search all contacts and chats
             const results = await client.invoke(new Api.contacts.Search({
                 q: search,
                 limit: parseInt(limit),
             }));
 
+            // results.users contains matching users/bots
+            const users = results.users || [];
+            for (const user of users) {
+                if (user.className === 'User' && !user.self) {
+                    const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Unknown';
+                    drives.push({
+                        id: user.id.toString(),
+                        name,
+                        type: user.bot ? 'bot' : 'user'
+                    });
+                }
+            }
+
             // results.chats contains the matching channels/groups
             const chats = results.chats || [];
-
             for (const chat of chats) {
                 if (chat.className === 'Channel' || chat.className === 'Chat') {
                     drives.push({
@@ -128,13 +150,36 @@ router.get('/drives', async (req, res) => {
             const dialogs = await client.getDialogs(options);
 
             for (const d of dialogs) {
-                if (d.isChannel || d.isGroup) {
-                    drives.push({
-                        id: d.id.toString(),
-                        name: d.title,
-                        type: d.isChannel ? 'channel' : 'group'
-                    });
+                // Skip self (Saved Messages handled separately) and legacy-only entries without a name
+                if (d.isMe) continue;
+
+                let type;
+                let name;
+
+                if (d.isChannel) {
+                    type = d.entity && d.entity.broadcast ? 'channel' : 'group';
+                    name = d.title;
+                } else if (d.isGroup) {
+                    type = 'group';
+                    name = d.title;
+                } else if (d.entity && d.entity.className === 'User') {
+                    // Private DM with a user or bot (GramJS dialogs don't have isUser)
+                    type = d.entity.bot ? 'bot' : 'user';
+                    name = [d.entity.firstName, d.entity.lastName].filter(Boolean).join(' ')
+                        || d.entity.username
+                        || d.name
+                        || 'Unknown';
+                } else {
+                    continue; // skip unknown types
                 }
+
+                if (!name) continue;
+
+                drives.push({
+                    id: d.id.toString(),
+                    name,
+                    type
+                });
             }
 
             if (dialogs.length > 0) {
@@ -440,6 +485,51 @@ router.get('/thumbnail/:fileId', async (req, res) => {
     } catch (error) {
         console.error('Thumbnail download error:', error);
         res.status(500).json({ message: error.message || 'Failed to download thumbnail' });
+    }
+});
+
+// Serve profile photo / avatar for any entity (user, bot, channel, group)
+router.get('/avatar/:driveId', async (req, res) => {
+    const { driveId } = req.params;
+
+    try {
+        const client = await getUserClient(req, res);
+        if (!client) return;
+
+        let entity;
+        if (driveId === 'me') {
+            return res.status(404).json({ message: 'No avatar for Saved Messages' });
+        }
+
+        try {
+            entity = await client.getEntity(driveId);
+        } catch (e) {
+            // Try as bigint for numeric IDs
+            if (/^-?\d+$/.test(driveId)) {
+                const bigInt = require('big-integer');
+                entity = await client.getEntity(bigInt(driveId));
+            } else {
+                throw e;
+            }
+        }
+
+        if (!entity) {
+            return res.status(404).json({ message: 'Entity not found' });
+        }
+
+        const buffer = await client.downloadProfilePhoto(entity, { isBig: false });
+
+        if (!buffer || buffer.length === 0) {
+            return res.status(404).json({ message: 'No profile photo' });
+        }
+
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // 24h cache
+        res.send(buffer);
+
+    } catch (error) {
+        // Return 404 rather than 500 so UI can silently fall back to icon
+        res.status(404).json({ message: 'Avatar not available' });
     }
 });
 
