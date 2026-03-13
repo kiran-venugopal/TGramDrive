@@ -50,7 +50,7 @@ const getFileIcon = (mimeType: string) => {
 };
 
 const formatSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+    if (!bytes || bytes <= 0) return '';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -115,13 +115,20 @@ export const DashboardModals = ({
                             <h3 className="font-medium text-brand-text">Rename File</h3>
                         </div>
                         <form onSubmit={handleRenameSubmit} className="p-4">
-                            <input
-                                type="text"
-                                value={newName}
-                                onChange={(e) => setNewName(e.target.value)}
-                                className="w-full px-3 py-2 border border-brand-text/20 rounded-lg bg-black/20 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-primary placeholder-brand-text/30 mb-4"
-                                autoFocus
-                            />
+                            <div className="flex items-center gap-2 mb-4">
+                                <input
+                                    type="text"
+                                    value={newName}
+                                    onChange={(e) => setNewName(e.target.value)}
+                                    className="w-full px-3 py-2 border border-brand-text/20 rounded-lg bg-black/20 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-primary placeholder-brand-text/30"
+                                    autoFocus
+                                />
+                                {renamingFile.fileName.includes('.') && (
+                                    <span className="px-2 py-2 rounded-lg bg-black/30 text-brand-text/70 text-sm select-none">
+                                        {renamingFile.fileName.substring(renamingFile.fileName.lastIndexOf('.'))}
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex justify-end space-x-2">
                                 <button type="button" onClick={() => setRenamingFile(null)} className="px-4 py-2 text-brand-text/70 hover:bg-brand-text/5 rounded-lg">Cancel</button>
                                 <button type="submit" disabled={!newName.trim()} className="px-4 py-2 bg-brand-primary text-white rounded-lg disabled:opacity-50">Rename</button>
@@ -262,8 +269,12 @@ export const DashboardModals = ({
                         <div className="w-full flex-shrink-0 pt-4 flex flex-col items-center mt-2 group">
                             <h2 className="text-white text-lg md:text-xl font-semibold mb-2 text-center max-w-2xl px-4 truncate w-full" title={previewFile.fileName}>{previewFile.fileName}</h2>
                             <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-2 text-white/70 text-xs md:text-sm">
-                                <span className="font-medium">{formatSize(previewFile.size)}</span>
-                                <span className="hidden sm:inline opacity-30">•</span>
+                                {previewFile.size > 0 && (
+                                    <>
+                                        <span className="font-medium">{formatSize(previewFile.size)}</span>
+                                        <span className="hidden sm:inline opacity-30">•</span>
+                                    </>
+                                )}
                                 <span className="uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-white/90 font-medium">{previewFile.mimeType || 'unknown'}</span>
                                 <span className="hidden sm:inline opacity-30">•</span>
                                 <span>Uploaded by {previewFile.uploader || 'Unknown'}</span>

@@ -95,13 +95,24 @@ export const FileCard = ({
             </div>
 
             <div className="py-2 px-2 border-t border-brand-text/5">
-                <h3 className="font-medium text-brand-text truncate text-sm px-1 mb-1" title={file.fileName}>{file.fileName}</h3>
-                <div className="flex items-center justify-between px-1 text-xs text-brand-text/50">
-                    <span>{formatSize(file.size)}</span>
-                    <span className="truncate max-w-[50%] text-right" title={file.uploader || 'Unknown User'}>{file.uploader || 'Unknown User'}</span>
-                </div>
-                <div className="px-1 text-[10px] text-brand-text/30 mt-0.5">
-                    {formatExactDate(file.date)}
+                <h3 className="font-medium text-brand-text truncate text-sm px-1 mb-1" title={file.fileName}>
+                    {file.fileName}
+                </h3>
+                <div className="px-1">
+                    <div
+                        className="truncate text-xs text-brand-text/50"
+                        title={file.uploader || 'Unknown User'}
+                    >
+                        {file.uploader || 'Unknown User'}
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between text-[10px] text-brand-text/50">
+                        <span className="truncate">{formatExactDate(file.date)}</span>
+                        {file.size > 0 && (
+                            <span className="ml-2 text-brand-text/40">
+                                {formatSize(file.size)}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

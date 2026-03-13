@@ -314,7 +314,12 @@ export const Dashboard = () => {
                             onSetPreviewFile={setPreviewFile}
                             onSetFolderAction={setFolderAction}
                             onSetMoveTarget={setMoveTarget}
-                            onRenameClick={setRenamingFile}
+                            onRenameClick={(file) => {
+                                const lastDot = file.fileName.lastIndexOf('.');
+                                const baseName = lastDot > 0 ? file.fileName.slice(0, lastDot) : file.fileName;
+                                setRenamingFile(file);
+                                setNewName(baseName);
+                            }}
                             onDelete={handleDelete}
                             lastElementRef={lastFileElementRef}
                         />

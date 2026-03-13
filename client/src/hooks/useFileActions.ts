@@ -82,7 +82,10 @@ export const useFileActions = ({
         if (!renamingFile || !newName.trim()) return;
 
         const targetFileId = renamingFile.id;
-        const targetNewName = newName.trim();
+        const originalName = renamingFile.fileName;
+        const lastDot = originalName.lastIndexOf('.');
+        const extension = lastDot > 0 ? originalName.slice(lastDot) : '';
+        const targetNewName = `${newName.trim()}${extension}`;
         const previousFiles = [...files];
 
         // Optimistic update
