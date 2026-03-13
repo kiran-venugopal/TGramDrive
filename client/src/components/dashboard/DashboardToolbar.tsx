@@ -24,7 +24,6 @@ interface DashboardToolbarProps {
 }
 
 export const DashboardToolbar = ({
-    selectedDrive,
     folderPath,
     onNavigate,
     selectionMode,
