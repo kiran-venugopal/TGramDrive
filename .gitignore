@@ -9,3 +9,4 @@ debug_log.txt
 server/session.txt
 server/debug_log.txt
 debug_files.txt
+.vercel
