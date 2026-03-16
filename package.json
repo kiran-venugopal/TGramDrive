@@ -4,9 +4,18 @@
   "description": "Deployment root for TGramDrive",
   "scripts": {
     "build": "npm install --prefix client && npm run build --prefix client && npm install --prefix server",
-    "start": "npm start --prefix server"
+    "start": "npm start --prefix server",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.1"
   }
 }

@@ -70,9 +70,12 @@ SESSION_ENCRYPTION_KEY=your_session_encryption_key
 
 ### Getting Telegram API Credentials
 
-1. Go to [my.telegram.org](https://my.telegram.org) and log in.
-2. Create a new application.
-3. Copy the `api_id` and `api_hash` to your `.env` file.
+1. Go to [my.telegram.org](https://my.telegram.org) and log in with your phone number.
+2. Click on "Create application" (or use an existing one).
+3. Fill in the required fields (App title, Short name, etc.).
+4. Copy the `api_id` and `api_hash` to your `.env` file.
+
+**Important**: Use production API credentials, not test credentials. Test credentials (api_id starting with small numbers like 12345) only work with test phone numbers and have limitations. Production credentials allow login with any real Telegram phone number.
 
 ### Notes
 
@@ -197,6 +200,42 @@ The backend is an Express.js server that acts as a bridge between the frontend a
 - `POST /api/folders` - Create a folder
 - `PUT /api/folders/:id` - Update folder
 - `DELETE /api/folders/:id` - Delete folder
+
+## Troubleshooting
+
+### Login Issues
+
+**Problem**: Login only works for one specific phone number.
+
+**Solution**: This usually occurs when using test API credentials instead of production ones. Test API credentials (api_id around 12345) only work with test phone numbers. Get production API credentials from [my.telegram.org](https://my.telegram.org) as described above.
+
+**Problem**: "PHONE_CODE_INVALID" error.
+
+**Solution**: The verification code may have expired (5 minutes) or been entered incorrectly. Request a new code.
+
+**Problem**: "SESSION_PASSWORD_NEEDED" error.
+
+**Solution**: The account has 2FA enabled. Enter your password when prompted.
+
+### File Upload Issues
+
+**Problem**: Files larger than 2GB fail to upload.
+
+**Solution**: Telegram has a 2GB per file limit. Split large files or use compression.
+
+**Problem**: Upload fails with network errors.
+
+**Solution**: Check your internet connection and try again. The app has retry logic built-in.
+
+### General Issues
+
+**Problem**: "Invalid session" errors.
+
+**Solution**: Clear browser cookies and local storage, then log in again.
+
+**Problem**: MongoDB connection errors.
+
+**Solution**: Verify your `MONGODB_URI` is correct and the database is accessible.
 
 ## Contributing
 
