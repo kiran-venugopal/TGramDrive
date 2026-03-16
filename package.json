@@ -1,6 +1,6 @@
 {
-  "name": "tg-files-deploy",
-  "version": "1.0.0",
+  "name": "tg-files",
+  "version": "1.0.1",
   "description": "Deployment root for TGramDrive",
   "scripts": {
     "build": "npm install --prefix client && npm run build --prefix client && npm install --prefix server",
