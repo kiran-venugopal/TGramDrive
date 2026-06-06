@@ -8,6 +8,7 @@ const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3000;
 
 // Connect to Database

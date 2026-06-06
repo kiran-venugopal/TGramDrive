@@ -581,15 +581,35 @@ router.get('/view/:fileId', async (req, res) => {
             res.setHeader('Content-Type', mimeType);
             res.setHeader('Cache-Control', 'no-cache');
 
+            // Telegram requires offset and limit to be divisible by 1024 bytes (or 4096 bytes).
+            // Align start down to 4096-byte boundary.
+            const startAligned = Math.floor(start / 4096) * 4096;
+            // Align end up to 4096-byte boundary, capped at fileSize - 1.
+            const endAligned = Math.min(fileSize - 1, Math.ceil((end + 1) / 4096) * 4096 - 1);
+            const chunksizeAligned = (endAligned - startAligned) + 1;
+
             const chunks = client.iterDownload({
                 file: msg.media,
-                offset: bigInt(start),
-                limit: chunksize,
-                requestSize: 512 * 1024, // 512KB chunks
+                offset: bigInt(startAligned),
+                limit: chunksizeAligned,
+                requestSize: 512 * 1024, // 512KB chunks (must be a multiple of 4096)
             });
 
+            let currentOffset = 0;
             for await (const chunk of chunks) {
-                res.write(chunk);
+                // Determine the overlap between the current chunk's byte range and the requested range
+                const chunkStartByte = startAligned + currentOffset;
+                const chunkEndByte = chunkStartByte + chunk.length - 1;
+
+                // If this chunk overlaps with the requested [start, end] range
+                if (chunkEndByte >= start && chunkStartByte <= end) {
+                    const sliceStart = Math.max(0, start - chunkStartByte);
+                    const sliceEnd = Math.min(chunk.length, end - chunkStartByte + 1);
+                    if (sliceStart < sliceEnd) {
+                        res.write(chunk.slice(sliceStart, sliceEnd));
+                    }
+                }
+                currentOffset += chunk.length;
             }
             res.end();
             return;
@@ -732,15 +752,44 @@ router.put('/rename/:fileId', async (req, res) => {
         }
         const message = messages[0];
 
-        // 2. Download media to temp file
+        // 2. Download media to temp file using streaming
         const tempFileName = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
         tempPath = path.join(os.tmpdir(), tempFileName);
 
-        const buffer = await client.downloadMedia(message, { workers: 1 });
-        if (!buffer) {
+        const writeStream = fs.createWriteStream(tempPath);
+        const chunks = client.iterDownload({
+            file: message.media,
+            requestSize: 1024 * 1024, // 1MB chunks
+        });
+
+        let downloadSuccess = false;
+        try {
+            for await (const chunk of chunks) {
+                await new Promise((resolve) => {
+                    if (!writeStream.write(chunk)) {
+                        writeStream.once('drain', resolve);
+                    } else {
+                        process.nextTick(resolve);
+                    }
+                });
+            }
+            await new Promise((resolve, reject) => {
+                writeStream.end((err) => {
+                    if (err) reject(err);
+                    else {
+                        downloadSuccess = true;
+                        resolve();
+                    }
+                });
+            });
+        } catch (downloadError) {
+            writeStream.destroy();
+            throw downloadError;
+        }
+
+        if (!downloadSuccess) {
             return res.status(500).json({ message: 'Failed to download file media' });
         }
-        fs.writeFileSync(tempPath, buffer);
 
         // 3. Create CustomFile with the NEW name
         const { CustomFile } = require('telegram/client/uploads');
