@@ -581,17 +581,13 @@ router.get('/view/:fileId', async (req, res) => {
             res.setHeader('Content-Type', mimeType);
             res.setHeader('Cache-Control', 'no-cache');
 
-            // Telegram requires offset and limit to be divisible by 1024 bytes (or 4096 bytes).
+            // Telegram requires offset to be divisible by 1024 bytes (or 4096 bytes).
             // Align start down to 4096-byte boundary.
             const startAligned = Math.floor(start / 4096) * 4096;
-            // Align end up to 4096-byte boundary, capped at fileSize - 1.
-            const endAligned = Math.min(fileSize - 1, Math.ceil((end + 1) / 4096) * 4096 - 1);
-            const chunksizeAligned = (endAligned - startAligned) + 1;
 
             const chunks = client.iterDownload({
                 file: msg.media,
                 offset: bigInt(startAligned),
-                limit: chunksizeAligned,
                 requestSize: 512 * 1024, // 512KB chunks (must be a multiple of 4096)
             });
 
@@ -610,6 +606,11 @@ router.get('/view/:fileId', async (req, res) => {
                     }
                 }
                 currentOffset += chunk.length;
+
+                // Stop downloading once we have covered the requested range
+                if (chunkStartByte + chunk.length > end) {
+                    break;
+                }
             }
             res.end();
             return;
