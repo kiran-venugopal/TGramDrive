@@ -408,8 +408,10 @@ router.get('/download/:fileId', async (req, res) => {
 
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         res.setHeader('Content-Type', mimeType);
-        if (fileSize) {
+        if (fileSize && fileSize <= 30 * 1024 * 1024) {
             res.setHeader('Content-Length', fileSize);
+        } else {
+            res.setHeader('Transfer-Encoding', 'chunked');
         }
 
         // Stream the file
@@ -577,7 +579,11 @@ router.get('/view/:fileId', async (req, res) => {
             res.status(206);
             res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
             res.setHeader('Accept-Ranges', 'bytes');
-            res.setHeader('Content-Length', chunksize);
+            if (chunksize <= 30 * 1024 * 1024) {
+                res.setHeader('Content-Length', chunksize);
+            } else {
+                res.setHeader('Transfer-Encoding', 'chunked');
+            }
             res.setHeader('Content-Type', mimeType);
             res.setHeader('Cache-Control', 'no-cache');
 
@@ -620,8 +626,10 @@ router.get('/view/:fileId', async (req, res) => {
         res.setHeader('Content-Disposition', 'inline'); // Display in browser
         res.setHeader('Cache-Control', 'public, max-age=3600');
         res.setHeader('Accept-Ranges', 'bytes');
-        if (fileSize) {
+        if (fileSize && fileSize <= 30 * 1024 * 1024) {
             res.setHeader('Content-Length', fileSize);
+        } else {
+            res.setHeader('Transfer-Encoding', 'chunked');
         }
 
         // Stream the file
