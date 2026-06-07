@@ -1,6 +1,8 @@
 import type { FileItem, FolderItem } from '../../types';
 import { X, Trash2, Home, Folder as FolderIcon, Download, FileImage, FileVideo, FileAudio, FileText, FileArchive, FileIcon, UploadCloud } from 'lucide-react';
 import type { FolderActionType } from '../../hooks/useFolderActions';
+import { VideoPlayer } from './VideoPlayer';
+
 
 interface DashboardModalsProps {
     renamingFile: FileItem | null;
@@ -29,6 +31,7 @@ interface DashboardModalsProps {
     previewFile: FileItem | null;
     setPreviewFile: (file: FileItem | null) => void;
     selectedDrive: string;
+    files: FileItem[];
 
     sharedFilesPending?: File[];
     setSharedFilesPending?: (files: File[]) => void;
@@ -84,6 +87,7 @@ export const DashboardModals = ({
     previewFile,
     setPreviewFile,
     selectedDrive,
+    files,
     sharedFilesPending = [],
     setSharedFilesPending,
     onConfirmSharedUpload
@@ -254,7 +258,7 @@ export const DashboardModals = ({
                             {isImage(previewFile.mimeType) ? (
                                 <img src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`} alt={previewFile.fileName} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
                             ) : isVideo(previewFile.mimeType) ? (
-                                <video src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl bg-black/50" />
+                                <VideoPlayer previewFile={previewFile} selectedDrive={selectedDrive} files={files} />
                             ) : (
                                 <div className="bg-brand-bg w-full max-w-md p-8 rounded-2xl flex flex-col items-center text-center relative border border-brand-text/10 shadow-2xl mt-8">
                                     <div className="p-5 bg-black/20 rounded-full text-brand-primary mb-6"><div className="scale-150">{getFileIcon(previewFile.mimeType)}</div></div>

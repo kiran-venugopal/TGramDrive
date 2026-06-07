@@ -55,13 +55,13 @@ class MainActivity : AppCompatActivity() {
         // Initialize WebView settings
         setupWebView()
 
-        // Check if server URL is configured
-        val savedUrl = sharedPreferences.getString(KEY_SERVER_URL, null)
+        // Check if server URL is configured, defaulting to tgdrive.kiranv.in
+        var savedUrl = sharedPreferences.getString(KEY_SERVER_URL, null)
         if (savedUrl.isNullOrEmpty()) {
-            showConfigScreen()
-        } else {
-            loadServerUrl(savedUrl)
+            savedUrl = "https://tgdrive.kiranv.in"
+            sharedPreferences.edit().putString(KEY_SERVER_URL, savedUrl).apply()
         }
+        loadServerUrl(savedUrl)
     }
 
     private fun setupWebView() {
