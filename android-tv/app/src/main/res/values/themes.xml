@@ -1,0 +1,11 @@
+<resources>
+    <!-- TV Leanback Theme -->
+    <style name="Theme.TGramDriveTV" parent="Theme.Leanback">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorPrimaryDark">@color/brand_bg</item>
+        <item name="colorAccent">@color/brand_primary</item>
+        <item name="android:windowBackground">@color/brand_bg</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

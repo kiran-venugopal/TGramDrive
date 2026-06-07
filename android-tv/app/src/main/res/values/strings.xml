@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">TGramDrive TV</string>
+    <string name="setup_title">TGramDrive TV Setup</string>
+    <string name="setup_subtitle">Please enter your TGramDrive server URL below to connect.</string>
+    <string name="url_hint">http://your-server-ip:port or https://...</string>
+    <string name="btn_save">Save &amp; Connect</string>
+    <string name="loading_text">Connecting to TGramDrive...</string>
+    <string name="error_invalid_url">Please enter a valid URL.</string>
+</resources>
