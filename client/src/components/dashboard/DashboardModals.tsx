@@ -258,7 +258,7 @@ export const DashboardModals = ({
                             {isImage(previewFile.mimeType) ? (
                                 <img src={`/api/files/view/${previewFile.id}?driveId=${selectedDrive}`} alt={previewFile.fileName} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
                             ) : isVideo(previewFile.mimeType) ? (
-                                <VideoPlayer previewFile={previewFile} selectedDrive={selectedDrive} files={files} />
+                                <VideoPlayer previewFile={previewFile} selectedDrive={selectedDrive} />
                             ) : (
                                 <div className="bg-brand-bg w-full max-w-md p-8 rounded-2xl flex flex-col items-center text-center relative border border-brand-text/10 shadow-2xl mt-8">
                                     <div className="p-5 bg-black/20 rounded-full text-brand-primary mb-6"><div className="scale-150">{getFileIcon(previewFile.mimeType)}</div></div>

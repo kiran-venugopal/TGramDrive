@@ -295,4 +295,17 @@ router.post("/logout", protect, async (req, res) => {
   }
 });
 
+router.get("/stream-token", protect, async (req, res) => {
+  try {
+    // Generate a short-lived token (1 hour) for external player streaming
+    const streamToken = jwt.sign({ id: req.userId, scope: 'stream' }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+    res.json({ token: streamToken });
+  } catch (error) {
+    console.error("Stream token error:", error);
+    res.status(500).json({ message: "Failed to generate stream token" });
+  }
+});
+
 module.exports = router;
