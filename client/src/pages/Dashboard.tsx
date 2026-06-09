@@ -231,7 +231,6 @@ export const Dashboard = () => {
                     previewFile={previewFile}
                     setPreviewFile={setPreviewFile}
                     selectedDrive={selectedDrive}
-                    files={files}
 
                     sharedFilesPending={sharedFilesPending}
                     setSharedFilesPending={setSharedFilesPending}

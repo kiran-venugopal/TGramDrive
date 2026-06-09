@@ -31,7 +31,6 @@ interface DashboardModalsProps {
     previewFile: FileItem | null;
     setPreviewFile: (file: FileItem | null) => void;
     selectedDrive: string;
-    files: FileItem[];
 
     sharedFilesPending?: File[];
     setSharedFilesPending?: (files: File[]) => void;
@@ -87,7 +86,6 @@ export const DashboardModals = ({
     previewFile,
     setPreviewFile,
     selectedDrive,
-    files,
     sharedFilesPending = [],
     setSharedFilesPending,
     onConfirmSharedUpload
