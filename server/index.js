@@ -61,7 +61,5 @@ const startServer = async () => {
 // Export the app for serverless platforms (Vercel) and tests.
 module.exports = app;
 
-// Only start the server when this file is run directly (local/dev).
-if (require.main === module) {
-    startServer();
-}
+startServer();
+
