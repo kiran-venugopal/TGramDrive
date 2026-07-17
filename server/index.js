@@ -11,6 +11,8 @@ const app = express();
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 3000;
 
+// Connect to Database
+connectDB();
 
 app.use(cors({
     origin: true, // Allow all origins (or specify your frontend URL)
@@ -46,20 +48,9 @@ app.get('/api/health', (req, res) => {
 });
 
 const startServer = async () => {
-    try {
-        await connectDB();
-    } catch (err) {
-        console.error('Failed to connect DB:', err);
-        // Continue startup even if DB fails — in local dev you may not have env set
-    }
-
     app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });
 };
 
-// Export the app for serverless platforms (Vercel) and tests.
-module.exports = app;
-
 startServer();
-
