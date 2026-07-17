@@ -2,8 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const ClientManager = require('../ClientManager');
-const mimeLib = require('mime');
-const mime = mimeLib.default || mimeLib;
+const { getMimeExtension } = require('../utils/mimeHelper');
 const bigInt = require('big-integer');
 const multer = require('multer');
 const os = require('os');
@@ -218,7 +217,7 @@ router.get('/:driveId', async (req, res) => {
         let files = [];
 
         // Helper function to parse message into File object
-        const parseMessage = (msg) => {
+        const parseMessage = async (msg) => {
             if (!msg || !msg.media) return null;
 
             let id = msg.id;
@@ -242,11 +241,16 @@ router.get('/:driveId', async (req, res) => {
                         const title = audioAttr.title || 'Unknown Title';
                         const performer = audioAttr.performer || 'Unknown Artist';
                         fileName = `${performer} - ${title}`;
-                        if (!fileName.includes('.')) fileName += `.${mime.getExtension(mimeType) || 'mp3'}`;
+                        if (!fileName.includes('.')) {
+                            const ext = await getMimeExtension(mimeType);
+                            fileName += `.${ext || 'mp3'}`;
+                        }
                     } else if (doc.attributes.some(a => a.className === 'DocumentAttributeVideo')) {
-                        fileName = `video_${id}.${mime.getExtension(mimeType) || 'mp4'}`;
+                        const ext = await getMimeExtension(mimeType);
+                        fileName = `video_${id}.${ext || 'mp4'}`;
                     } else {
-                        fileName = `file_${id}.${mime.getExtension(mimeType) || 'bin'}`;
+                        const ext = await getMimeExtension(mimeType);
+                        fileName = `file_${id}.${ext || 'bin'}`;
                     }
                 }
                 hasThumbnail = !!(doc.thumbs && doc.thumbs.length > 0);
@@ -294,7 +298,7 @@ router.get('/:driveId', async (req, res) => {
 
                 for (const msgId of messageIds) {
                     if (fetchedMap.has(msgId)) {
-                        const parsed = parseMessage(fetchedMap.get(msgId));
+                        const parsed = await parseMessage(fetchedMap.get(msgId));
                         if (parsed) files.push(parsed);
                     }
                 }
@@ -337,7 +341,7 @@ router.get('/:driveId', async (req, res) => {
                     // IF AT ROOT, ignore files that are inside folders
                     if (!search && mappedMsgSet.has(msg.id)) continue;
 
-                    const parsed = parseMessage(msg);
+                    const parsed = await parseMessage(msg);
                     if (parsed) files.push(parsed);
                 }
 
@@ -393,7 +397,7 @@ router.get('/download/:fileId', async (req, res) => {
 
             // Check extension
             if (!fileName.includes('.')) {
-                const ext = mime.getExtension(mimeType);
+                const ext = await getMimeExtension(mimeType);
                 if (ext) fileName += `.${ext}`;
             }
         } else if (msg.media.photo) {
