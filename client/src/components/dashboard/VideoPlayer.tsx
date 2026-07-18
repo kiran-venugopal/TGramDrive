@@ -147,7 +147,7 @@ export const VideoPlayer = ({
                     {/* Tooltip */}
                     {showTooltip && copyState === 'idle' && (
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-black/90 border border-brand-text/20 rounded-lg text-xs text-brand-text/80 whitespace-nowrap backdrop-blur-md pointer-events-none z-10">
-                            Stream URL expires in 1 hour
+                            Stream URL expires in 4 hours
                             <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black/90" />
                         </div>
                     )}

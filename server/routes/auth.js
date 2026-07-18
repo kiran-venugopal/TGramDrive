@@ -297,9 +297,9 @@ router.post("/logout", protect, async (req, res) => {
 
 router.get("/stream-token", protect, async (req, res) => {
   try {
-    // Generate a short-lived token (1 hour) for external player streaming
+    // Generate a short-lived token (4 hours) for external player streaming
     const streamToken = jwt.sign({ id: req.userId, scope: 'stream' }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "4h",
     });
     res.json({ token: streamToken });
   } catch (error) {
