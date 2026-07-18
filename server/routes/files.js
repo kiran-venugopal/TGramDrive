@@ -31,6 +31,74 @@ const getUserClient = async (req, res) => {
     return client;
 };
 
+const resolveEntity = async (client, driveId) => {
+    if (driveId === 'me') return 'me';
+
+    const tryGetEntity = async (value) => {
+        try {
+            return await client.getEntity(value);
+        } catch (err) {
+            return null;
+        }
+    };
+
+    const candidates = new Set();
+    candidates.add(driveId);
+
+    if (/^-?\d+$/.test(driveId)) {
+        candidates.add(bigInt(driveId));
+
+        let rawId = driveId;
+        if (driveId.startsWith('-100')) {
+            rawId = driveId.slice(4);
+        } else if (driveId.startsWith('-')) {
+            rawId = driveId.slice(1);
+        }
+
+        if (rawId !== driveId && /^-?\d+$/.test(rawId)) {
+            candidates.add(bigInt(rawId));
+        }
+
+        if (!driveId.startsWith('-100') && rawId !== driveId) {
+            candidates.add(`-100${rawId}`);
+        }
+
+        if (!driveId.startsWith('-') && rawId !== driveId) {
+            candidates.add(`-${rawId}`);
+        }
+    }
+
+    for (const candidate of candidates) {
+        const entity = await tryGetEntity(candidate);
+        if (entity) return entity;
+    }
+
+    try {
+        const dialogs = await client.getDialogs({ limit: 200 });
+        const normalized = driveId.toString();
+        for (const d of dialogs) {
+            if (!d || !d.id) continue;
+            const dialogId = d.id.toString();
+            if (dialogId === normalized || dialogId === driveId) {
+                return d.entity || d.peer || null;
+            }
+
+            if (driveId.startsWith('-100') && dialogId === driveId.slice(4)) {
+                return d.entity || d.peer || null;
+            }
+
+            if (driveId.startsWith('-') && !driveId.startsWith('-100') && dialogId === driveId.slice(1)) {
+                return d.entity || d.peer || null;
+            }
+        }
+    } catch (err) {
+        console.error(`Entity fallback failed for driveId=${driveId}:`, err.message || err);
+        // ignore fallback failures; return null below
+    }
+
+    return null;
+};
+
 router.get('/drives', async (req, res) => {
     try {
         const client = await getUserClient(req, res);
@@ -55,14 +123,7 @@ router.get('/drives', async (req, res) => {
                     for (const driveId of user.starredDrives) {
                         if (driveId === 'me') continue;
                         try {
-                            let entity;
-                            try {
-                                entity = await client.getEntity(driveId);
-                            } catch (e) {
-                                if (/^-?\d+$/.test(driveId)) {
-                                    entity = await client.getEntity(bigInt(driveId));
-                                }
-                            }
+                            const entity = await resolveEntity(client, driveId);
 
                             if (entity) {
                                 // To match getDialogs peer IDs for deduplication, we must prepend -100 for channels/megagroups
@@ -507,17 +568,7 @@ router.get('/avatar/:driveId', async (req, res) => {
             return res.status(404).json({ message: 'No avatar for Saved Messages' });
         }
 
-        try {
-            entity = await client.getEntity(driveId);
-        } catch (e) {
-            // Try as bigint for numeric IDs
-            if (/^-?\d+$/.test(driveId)) {
-                const bigInt = require('big-integer');
-                entity = await client.getEntity(bigInt(driveId));
-            } else {
-                throw e;
-            }
-        }
+        entity = await resolveEntity(client, driveId);
 
         if (!entity) {
             return res.status(404).json({ message: 'Entity not found' });
