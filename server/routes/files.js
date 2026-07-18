@@ -272,7 +272,11 @@ router.get('/:driveId', async (req, res) => {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity = driveId === 'me' ? 'me' : driveId;
+        const entity = await resolveEntity(client, driveId);
+        if (!entity) {
+            return res.status(404).json({ message: 'Drive entity not found' });
+        }
+
         const targetLimit = parseInt(limit);
         let nextOffsetId = offsetId ? parseInt(offsetId) : null;
         let files = [];
@@ -433,7 +437,10 @@ router.get('/download/:fileId', async (req, res) => {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity = driveId === 'me' ? 'me' : driveId;
+        const entity = await resolveEntity(client, driveId);
+        if (!entity) {
+            return res.status(404).json({ message: 'Drive entity not found' });
+        }
 
         // Fetch specific message to get media
         const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
@@ -512,7 +519,10 @@ router.get('/thumbnail/:fileId', async (req, res) => {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity = driveId === 'me' ? 'me' : driveId;
+        const entity = await resolveEntity(client, driveId);
+        if (!entity) {
+            return res.status(404).json({ message: 'Drive entity not found' });
+        }
 
         const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
         const msg = messages[0];
@@ -602,7 +612,10 @@ router.get('/view/:fileId', async (req, res) => {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity = driveId === 'me' ? 'me' : driveId;
+        const entity = await resolveEntity(client, driveId);
+        if (!entity) {
+            return res.status(404).json({ message: 'Drive entity not found' });
+        }
 
         const messages = await client.getMessages(entity, { ids: [parseInt(fileId)] });
         const msg = messages[0];
@@ -775,7 +788,10 @@ router.delete('/delete/:fileId', async (req, res) => {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity = driveId === 'me' ? 'me' : driveId;
+        const entity = await resolveEntity(client, driveId);
+        if (!entity) {
+            return res.status(404).json({ message: 'Drive entity not found' });
+        }
         const msgId = parseInt(fileId);
 
         // Revoke: true deletes for everyone in chats/channels
@@ -806,7 +822,10 @@ router.put('/rename/:fileId', async (req, res) => {
         const client = await getUserClient(req, res);
         if (!client) return;
 
-        let entity = driveId === 'me' ? 'me' : driveId;
+        const entity = await resolveEntity(client, driveId);
+        if (!entity) {
+            return res.status(404).json({ message: 'Drive entity not found' });
+        }
         const messageId = parseInt(fileId);
 
         // 1. Get the original message to download its media
