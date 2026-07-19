@@ -22,9 +22,10 @@ const protect = async (req, res, next) => {
 
         // If token came from query param and has a restricted scope, enforce it
         if (req._isQueryToken && decoded.scope === 'stream') {
-            // Only allow file view/stream endpoints
-            if (!req.path.startsWith('/view/')) {
-                return res.status(403).json({ error: 'Stream token can only be used for viewing files' });
+            const allowedPathPrefixes = ['/view/', '/download/'];
+            const isAllowed = allowedPathPrefixes.some(prefix => req.path.startsWith(prefix));
+            if (!isAllowed) {
+                return res.status(403).json({ error: 'Stream token can only be used for viewing or downloading files' });
             }
         }
 

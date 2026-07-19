@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Monitor, Check, Copy, Loader2, Link } from 'lucide-react';
+import { Monitor, Check, Copy, Loader2, Link, UploadCloud } from 'lucide-react';
 import type { FileItem } from '../../types';
 import api from '../../api';
 
@@ -14,12 +14,13 @@ export const VideoPlayer = ({
 }: VideoPlayerProps) => {
     const [vlcState, setVlcState] = useState<'idle' | 'loading' | 'copied' | 'error'>('idle');
     const [copyState, setCopyState] = useState<'idle' | 'loading' | 'copied' | 'error'>('idle');
+    const [gdriveState, setGdriveState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [showTooltip, setShowTooltip] = useState(false);
 
     const getStreamUrl = async () => {
         const res = await api.get('/auth/stream-token');
         const { token } = res.data;
-        return `${window.location.origin}/api/files/view/${previewFile.id}?driveId=${encodeURIComponent(selectedDrive)}&token=${encodeURIComponent(token)}`;
+        return `${window.location.origin}/api/files/view/${previewFile.id}?driveId=${encodeURIComponent(selectedDrive)}&token=${encodeURIComponent(token)}&download=1`;
     };
 
     const handleVlcStream = async () => {
@@ -51,6 +52,21 @@ export const VideoPlayer = ({
             console.error('Failed to copy stream URL:', err);
             setCopyState('error');
             setTimeout(() => setCopyState('idle'), 3000);
+        }
+    };
+
+    const handleUploadToGoogleDrive = async () => {
+        setGdriveState('loading');
+        try {
+            const streamUrl = await getStreamUrl();
+            const uploaderUrl = `https://gdrive-uploader.koyeb.app/?url=${encodeURIComponent(streamUrl)}`;
+            window.open(uploaderUrl, '_blank', 'noopener,noreferrer');
+            setGdriveState('success');
+            setTimeout(() => setGdriveState('idle'), 3000);
+        } catch (err) {
+            console.error('Failed to open Google Drive uploader:', err);
+            setGdriveState('error');
+            setTimeout(() => setGdriveState('idle'), 3000);
         }
     };
 
@@ -100,6 +116,42 @@ export const VideoPlayer = ({
                         <>
                             <Monitor className="w-4 h-4" />
                             <span>Open in VLC</span>
+                        </>
+                    )}
+                </button>
+
+                {/* Upload to Google Drive Button */}
+                <button
+                    onClick={handleUploadToGoogleDrive}
+                    disabled={gdriveState === 'loading'}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 backdrop-blur-md border cursor-pointer ${
+                        gdriveState === 'success'
+                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                            : gdriveState === 'error'
+                            ? 'bg-red-500/20 border-red-500/40 text-red-400'
+                            : 'bg-white/5 border-brand-text/10 text-brand-text/90 hover:bg-white/10 hover:border-brand-primary/30'
+                    }`}
+                    title="Upload this stream to Google Drive"
+                >
+                    {gdriveState === 'loading' ? (
+                        <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Opening...</span>
+                        </>
+                    ) : gdriveState === 'success' ? (
+                        <>
+                            <Check className="w-4 h-4" />
+                            <span>Opened</span>
+                        </>
+                    ) : gdriveState === 'error' ? (
+                        <>
+                            <UploadCloud className="w-4 h-4" />
+                            <span>Failed</span>
+                        </>
+                    ) : (
+                        <>
+                            <UploadCloud className="w-4 h-4" />
+                            <span>Upload to Google Drive</span>
                         </>
                     )}
                 </button>

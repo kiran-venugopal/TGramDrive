@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const ClientManager = require('../ClientManager');
 const { getMimeExtension } = require('../utils/mimeHelper');
+const { getContentDisposition } = require('../utils/streamResponse');
 const bigInt = require('big-integer');
 const multer = require('multer');
 const os = require('os');
@@ -427,7 +428,7 @@ router.get('/:driveId', async (req, res) => {
 
 router.get('/download/:fileId', async (req, res) => {
     const { fileId } = req.params;
-    const { driveId } = req.query;
+    const { driveId, download } = req.query;
 
     if (!driveId) {
         return res.status(400).json({ message: 'Missing driveId query parameter' });
@@ -626,14 +627,24 @@ router.get('/view/:fileId', async (req, res) => {
 
         console.log(`Viewing file ${fileId} from ${driveId}...`);
 
+        let fileName = `file_${fileId}`;
         let mimeType = 'application/octet-stream';
         let fileSize = 0;
 
         if (msg.media.document) {
-            mimeType = msg.media.document.mimeType;
-            fileSize = msg.media.document.size;
+            const doc = msg.media.document;
+            mimeType = doc.mimeType;
+            fileSize = doc.size;
+            const attr = doc.attributes.find(a => a.className === 'DocumentAttributeFilename');
+            if (attr) fileName = attr.fileName;
+
+            if (!fileName.includes('.')) {
+                const ext = await getMimeExtension(mimeType);
+                if (ext) fileName += `.${ext}`;
+            }
         } else if (msg.media.photo) {
             mimeType = 'image/jpeg';
+            fileName = `photo_${fileId}.jpg`;
         }
 
         // Handle Range Requests (Video Streaming)
@@ -691,7 +702,7 @@ router.get('/view/:fileId', async (req, res) => {
         }
 
         res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Disposition', 'inline'); // Display in browser
+        res.setHeader('Content-Disposition', getContentDisposition(fileName, { download: req.query.download }));
         res.setHeader('Cache-Control', 'public, max-age=3600');
         res.setHeader('Accept-Ranges', 'bytes');
         if (fileSize && fileSize <= 30 * 1024 * 1024) {
