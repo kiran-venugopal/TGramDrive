@@ -479,7 +479,7 @@ router.get('/download/:fileId', async (req, res) => {
             }
         }
 
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Disposition', getContentDisposition(fileName, { download: true }));
         res.setHeader('Content-Type', mimeType);
         if (fileSize) {
             res.setHeader('Content-Length', fileSize);
