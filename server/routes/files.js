@@ -481,10 +481,12 @@ router.get('/download/:fileId', async (req, res) => {
 
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         res.setHeader('Content-Type', mimeType);
-        if (fileSize && fileSize <= 30 * 1024 * 1024) {
+        if (fileSize) {
             res.setHeader('Content-Length', fileSize);
+            console.log(`Download response: fileId=${fileId} driveId=${driveId} size=${fileSize} disposition=attachment`);
         } else {
             res.setHeader('Transfer-Encoding', 'chunked');
+            console.log(`Download response: fileId=${fileId} driveId=${driveId} size=unknown disposition=attachment chunked=true`);
         }
 
         // Stream the file
@@ -705,10 +707,12 @@ router.get('/view/:fileId', async (req, res) => {
         res.setHeader('Content-Disposition', getContentDisposition(fileName, { download: req.query.download }));
         res.setHeader('Cache-Control', 'public, max-age=3600');
         res.setHeader('Accept-Ranges', 'bytes');
-        if (fileSize && fileSize <= 30 * 1024 * 1024) {
+        if (fileSize) {
             res.setHeader('Content-Length', fileSize);
+            console.log(`View response: fileId=${fileId} driveId=${driveId} size=${fileSize} disposition=${req.query.download ? 'attachment' : 'inline'} range=${range || 'none'}`);
         } else {
             res.setHeader('Transfer-Encoding', 'chunked');
+            console.log(`View response: fileId=${fileId} driveId=${driveId} size=unknown disposition=${req.query.download ? 'attachment' : 'inline'} range=${range || 'none'} chunked=true`);
         }
 
         // Stream the file
